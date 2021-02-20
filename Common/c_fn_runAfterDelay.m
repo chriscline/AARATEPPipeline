@@ -1,0 +1,19 @@
+function c_fn_runAfterDelay(varargin)
+p = inputParser();
+p.addRequired('fn',@(x) isa(x,'function_handle'));
+p.addRequired('delay',@isscalar); % in s
+p.addParameter('timerName',mfilename,@ischar);
+p.addParameter('args',{},@iscell);
+p.parse(varargin{:});
+s = p.Results;
+
+t = timer(...
+	'BusyMode','drop',...
+	'ExecutionMode','singleShot',...
+	'Name',s.timerName,...
+	'StartDelay',s.delay,...
+	'TimerFcn',@(h,e) s.fn(s.args{:}),...
+	'StopFcn',@(h,e) delete(h));
+start(t);
+
+end

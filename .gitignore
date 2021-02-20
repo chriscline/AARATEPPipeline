@@ -1,0 +1,11 @@
+syntax: glob
+*.m~
+*.asv
+*.mexw64
+*.lib
+*.exe
+*.dll
+Common/boundedline/Inpaint*
+Common/FastICA/CVS
+Common/boundedline/*readme*
+Common/ThirdParty/GUILayoutToolbox/layoutdoc
