@@ -26,7 +26,7 @@ Assuming you have downloaded this whole repo to a folder called `AARATEPPipeline
 
     addpath('AARATEPPipeline');
     addpath('AARATEPPipeline/Common');
-    addpath('AARATEPPipeline/EEGAnalysisCode');
+    addpath('AARATEPPipeline/Common/EEGAnalysisCode');
 
 Load your data as an EEGLab struct `EEG`. For example:
 
