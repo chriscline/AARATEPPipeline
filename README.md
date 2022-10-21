@@ -1,7 +1,7 @@
-# AARATEPPipeline
+# AARATEP Pipeline
 This repo contains the code for the TMS-EEG preprocessing pipeline originally described in:
 
-C.C. Cline, M.V. Lucas, Y. Sun, M. Menezes, A. Etkin. "Advanced Artifact Removal for Automated TMS-EEG Data Processing," 2021 10th International IEEE/EMBS Conference on Neural Engineering (NER), 2021. 
+C.C. Cline, M.V. Lucas, Y. Sun, M. Menezes, A. Etkin. "Advanced Artifact Removal for Automated TMS-EEG Data Processing," 2021 10th International IEEE/EMBS Conference on Neural Engineering (NER), 2021, doi: [10.1109/NER49283.2021.9441147](https://doi.org/10.1109/NER49283.2021.9441147).
 
 In brief, this pipeline consists of the following stages:
 - Epoching
