@@ -156,6 +156,14 @@ if length([EEG.chanlocs.X]) < EEG.nbchan ....
 	
 	% require that labels are set
 	assert(~any(cellfun(@isempty, {EEG.chanlocs.labels})));
+
+	% drop EMG channels
+	removeChanIndices = c_str_matchRegex({EEG.chanlocs.labels}, 'EMG.*');
+	if any(removeChanIndices)
+		c_say('Removing %d EMG channels', sum(removeChanIndices));
+		EEG = pop_select(EEG, 'nochannel', find(removeChanIndices));
+		c_sayDone();
+	end
 	
 	switch(EEG.nbchan)
 		case 95
@@ -164,16 +172,6 @@ if length([EEG.chanlocs.X]) < EEG.nbchan ....
 		case 63
 			c_saySingle('No chanlocs set, loading ActiCAP-64 default locations');
 			defaultChanlocsPath = fullfile(fileparts(which(mfilename)),'Resources','ActiCAP-64.ced');
-		case 64
-			if strcmp(EEG.chanlocs(end).labels, 'EMG')
-				c_saySingle('No chanlocs set, loading ActiCAP-64 default locations');
-				defaultChanlocsPath = fullfile(fileparts(which(mfilename)),'Resources','ActiCAP-64.ced');
-				c_say('Dropping EMG channel');
-				EEG = pop_select(EEG, 'nochannel', {'EMG'});
-				c_sayDone();
-			else
-				error('No chanlocs template available for %d channel montage', EEG.nbchan);
-			end
 		otherwise
 			error('No chanlocs template available for %d channel montage', EEG.nbchan);
 	end
