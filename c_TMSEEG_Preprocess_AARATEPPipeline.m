@@ -33,6 +33,7 @@ function EEG = c_TMSEEG_Preprocess_AARATEPPipeline(varargin)
 %   'onOverRejection': string, what to do if too many components are rejected.
 %   'doDebug': bool, whether to keep intermediate results and generate additional plots
 %   'doPlotFinalTimtopo': bool, whether to generate final timtopo plot after preprocessing
+%   'maximizePlotsToMonitor': which monitor index on which to show debug plots
 %   'plotXLim': timespan, in seconds, for final and debug timtopo plots
 %   'plotTPOIs': time-points of interest, in seconds, for final and debug timtopo plots (e.g. 
 %                 typical TEP latencies)
@@ -76,6 +77,7 @@ p.addParameter('onOverRejection', 'pause', @ischar);
 p.addParameter('doPostICAArtifactInterpolation', false, @islogical);
 p.addParameter('doDebug', false, @islogical);
 p.addParameter('doPlotFinalTimtopo', true, @islogical);
+p.addParameter('maximizePlotsToMonitor', 2, @isschar);
 p.addParameter('plotXLim', [-0.1 0.35], @c_isSpan);
 p.addParameter('plotTPOIs', defaultTPOIs, @isnumeric);
 p.addParameter('plotChans', {'Fz', 'Pz'}, @(x) iscellstr(x) || isnumeric(x));
@@ -217,6 +219,14 @@ if s.doDebug
 	tmpEEG = [];
 end
 
+if true
+	% save EEG prior to SOUND for some analyses
+	outputPath = fullfile(s.outputDir, [s.outputFilePrefix '_preSOUND.mat']);
+	c_say('Prior to ICA rejection, saving results to %s', outputPath);
+	save(outputPath, 'EEG', 'md');
+	c_sayDone();
+end
+
 %% SOUND
 
 c_say('Running SOUND');
@@ -230,6 +240,14 @@ c_sayDone();
 if s.doDebug
 	intermediateEEGs{end+1} = EEG;
 	intermediateLabels{end+1} = 'After SOUND';
+end
+
+if true
+    % save EEG prior to component rejection to allow different component rejection choices later
+    outputPath = fullfile(s.outputDir, [s.outputFilePrefix '_preDecayRemoval.mat']);
+    c_say('Prior to ICA rejection, saving results to %s', outputPath);
+    c_save(outputPath, 'EEG', 'md');
+    c_sayDone();
 end
 
 %% decay fitting and removal
@@ -344,7 +362,7 @@ if true
     % save EEG prior to component rejection to allow different component rejection choices later
     outputPath = fullfile(s.outputDir, [s.outputFilePrefix '_preICARejection.mat']);
     c_say('Prior to ICA rejection, saving results to %s', outputPath);
-    save(outputPath, 'EEG', 'md');
+    c_save(outputPath, 'EEG', 'md');
     c_sayDone();
 end
 
@@ -400,7 +418,7 @@ end
 %% save output
 outputPath = fullfile(s.outputDir, [s.outputFilePrefix '.mat']);
 c_say('Saving results to %s', outputPath);
-save(outputPath, 'EEG', 'md');
+c_save(outputPath, 'EEG', 'md');
 c_sayDone();
 
 %% plot
@@ -409,6 +427,7 @@ if s.doPlotFinalTimtopo
 	outputPath = fullfile(s.outputDir, [s.outputFilePrefix '_Plot_TEPTimtopo.png']);
 	hf = figure;
 	tmp = c_EEG_plotTimtopo(EEG,...
+		'doShowColorbars', false,... 
 		'doPlotGMFA', true,...
 		'TPOI', s.plotTPOIs,...
 		'xlim', s.plotXLim*1e3);
@@ -427,7 +446,7 @@ if s.doDebug
     
     outputPath = fullfile(s.outputDir, [s.outputFilePrefix '_Debug_IntermediateTEPs.png']);
     hf = gcf;
-    c_fig_arrange('maximize', hf);
+    c_fig_arrange('maximize', hf, 'monitor', s.maximizePlotsToMonitor);
     c_FigurePrinter.copyToFile(outputPath, 'magnification', 2, 'doTransparent', false);
     close(hf);
 	
@@ -436,7 +455,7 @@ if s.doDebug
 
 		outputPath = fullfile(s.outputDir, [s.outputFilePrefix '_Debug_IntermediateERPIms.png']);
 		hf = gcf;
-		c_fig_arrange('maximize', hf);
+		c_fig_arrange('maximize', hf, 'monitor',  s.maximizePlotsToMonitor);
 		c_FigurePrinter.copyToFile(outputPath, 'magnification', 2, 'doTransparent', false);
 		close(hf);
 	end
@@ -452,6 +471,7 @@ ht = c_GUI_Tiler();
 ht.pauseAutoRetiling();
 for iEEG = 1:length(EEGs)
     tmp = c_EEG_plotTimtopo(EEGs{iEEG},...
+		'doShowColorbars', false,...
         'TPOI', s.plotTPOIs,...
 		'doPlotGMFA', true,...
         'xlim', [-100 350],...
@@ -464,7 +484,7 @@ if length(EEGs) < 4
     hf.Position = [50 50 700*length(EEGs) 600];
     ht.numRows = 1;
 else
-    c_fig_arrange('maximize', hf);
+    c_fig_arrange('maximize', hf, 'monitor',  s.maximizePlotsToMonitor);
 end
 ht.resumeAutoRetiling();
 
@@ -512,7 +532,7 @@ if length(EEGs) < 4
     hf.Position = [50 50 700*length(EEGs) 600];
     ht.numRows = 1;
 else
-    c_fig_arrange('maximize', hf);
+    c_fig_arrange('maximize', hf, 'monitor',  s.maximizePlotsToMonitor);
 end
 ht.resumeAutoRetiling();
 
