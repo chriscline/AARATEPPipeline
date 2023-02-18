@@ -1,6 +1,6 @@
 function EEG = c_TMSEEG_Preprocess_AARATEPPipeline(varargin)
 % c_TMSEEG_Preprocess_AARATEPPipeline - Preprocess raw TMS-EEG data
-%
+% 
 % Inputs:
 %   EEG: input dataset in EEGLab struct format, assumed to not yet have been epoched
 %   'pulseEvent': string indicating event type marking each pulse 
@@ -22,6 +22,8 @@ function EEG = c_TMSEEG_Preprocess_AARATEPPipeline(varargin)
 %   'badChannelThreshold': scalar, threshold at which to classify a channel as bad or good. Exact
 %                           meaning of this threshold depends on the badChannelDetectionMethod
 %   'SOUNDlambda': lambda regularization parameter used in SOUND
+%   'initialEyeComponentThreshold': threshold for rejecting eye-related ICs during early eye-blink 
+%						rejection stage. Set to 1 or greater to skip early eye IC rejection stage.
 %   'leadFieldPath': path to lead field file or lead field matrix itself to be used by SOUND. If 
 %                     empty, SOUND will use a template lead field
 %   'doDecayRemovalPerTrial': whether to do decay fitting and removal partially on a per-trial basis
@@ -39,7 +41,6 @@ function EEG = c_TMSEEG_Preprocess_AARATEPPipeline(varargin)
 %                 typical TEP latencies)
 %   'plotChans': channels of interest, either as a cell list of labels or vector of channel indices,
 %                 to be included in debug erpimage plots.
-	
 
 %% add dependencies to path
 persistent pathModified
@@ -68,6 +69,7 @@ p.addParameter('downsampleTo', 1000, @isscalar);
 p.addParameter('bandpassFreqSpan', [1 200], @c_isSpan);
 p.addParameter('badChannelDetectionMethod', 'TESA_DDWiener_PerTrial', @ischar);
 p.addParameter('badChannelThreshold', 10, @isscalar);
+p.addParameter('initialEyeComponentThreshold', 0.9, @isscalar);
 p.addParameter('SOUNDlambda', 10^-1.5, @isscalar);
 p.addParameter('leadFieldPath', '', @(x) ischar(x) || ismatrix(x));  % used by SOUND
 p.addParameter('doDecayRemovalPerTrial', true, @islogical);
@@ -192,11 +194,13 @@ if s.doDebug
 end
 
 %% basic channel rejection
+doReplaceBadChanImmediately = true;
+
 [EEG, misc] = c_TMSEEG_detectBadChannels(EEG,...
 	'detectionMethod', s.badChannelDetectionMethod,...
 	'artifactTimespan', s.artifactTimespan*2,...
 	'threshold', s.badChannelThreshold,...
-	'replaceMethod', 'none',...
+	'replaceMethod', c_if(doReplaceBadChanImmediately, 'interpolate', 'none'),...
 	'doPlot', true);
 
 badChannels = misc.badChannelIndices;
@@ -210,7 +214,11 @@ md.earlyRejectedChannels = badChannels;
 
 if s.doDebug
 	if ~isempty(badChannels)
-		intermediateEEGs{end+1} = pop_select(EEG, 'nochannel', badChannels);
+		if doReplaceBadChanImmediately
+			intermediateEEGs{end+1} = EEG;
+		else
+			intermediateEEGs{end+1} = pop_select(EEG, 'nochannel', badChannels);
+		end
 		intermediateLabels{end+1} = 'After channel rejection';
 	else
 		intermediateEEGs{end+1} = EEG;
@@ -218,6 +226,70 @@ if s.doDebug
 	end
 	tmpEEG = [];
 end
+
+%% Initial eye-blink removal
+% Note: do this prior to SOUND, since SOUND tends to make eye blink topographies look more "brain-like" in a way
+%  that makes them more difficult to reject later.
+
+if s.initialEyeComponentThreshold < 1
+	c_say('Rereferencing');
+	EEG = pop_reref(EEG, []);
+	c_sayDone();
+	
+	c_say('Running early ICA for eye artifacts');
+	EEG = c_EEG_ICA(EEG, 'method', 'fastica');
+	c_sayDone();
+	
+	c_say('Labeling ICs using ICLabel');
+	[EEG, misc] = c_TMSEEG_runICLabel(EEG,...
+		'eyeComponentThreshold', s.initialEyeComponentThreshold,...
+		'muscleComponentThreshold', nan,...
+		'brainComponentThreshold', nan,...
+		'otherComponentThreshold', nan,...
+		'doPlot', true,...
+		'doRejection', false);
+	c_sayDone();
+
+	reportInfo.eyeICA_numComp = length(misc.rejectComponents);
+	reportInfo.eyeICA_numRejComp = sum(misc.rejectComponents);
+
+	if true
+		figure(misc.hf);
+		c_FigurePrinter.copyToFile(fullfile(s.outputDir, [s.outputFilePrefix, '_QC_EyeICA_ClassifiedComponents.png']),...
+			'magnification', 2,...
+			'doTransparent', false);
+		close(misc.hf);
+	end
+
+	if  reportInfo.eyeICA_numRejComp > 0
+		c_say('Rejecting %d/%d components', reportInfo.eyeICA_numRejComp, reportInfo.eyeICA_numComp);
+		if false
+			EEG = pop_subcomp(EEG, find(misc.rejectComponents));
+		else
+			compproj_toRemove = EEG.icawinv(:, misc.rejectComponents) * eeg_getdatact(EEG, 'component', find(misc.rejectComponents), 'reshape', '2d');
+			compproj_toRemove = reshape(compproj_toRemove, size(compproj_toRemove, 1), EEG.pnts, EEG.trials);
+			if false
+				EEG_a = pop_subcomp(EEG, find(misc.rejectComponents));
+				EEG_b = EEG;
+				EEG_b.data = EEG_b.data - compproj_toRemove;
+				c_EEG_plotRawComparison({EEG_a, EEG_b}, 'descriptors', {'pop_subcomp', 'custom subcomp'});
+				EEG_c = EEG;
+				EEG_c.data = EEG_b.data - EEG_a.data;
+				pop_eegplot(EEG_c, 1, 1, 0);
+			end
+			EEG.data = EEG.data - compproj_toRemove;
+		end
+		c_sayDone();
+	end
+	
+	if s.doDebug
+		intermediateEEGs{end+1} = EEG;
+		intermediateLabels{end+1} = sprintf('Eye components%s removed', c_if(reportInfo.eyeICA_numRejComp > 0, '', ' (not)'));
+	end
+else
+	c_saySingle('Skipping early eye component rejection stage.')
+end
+
 
 if true
 	% save EEG prior to SOUND for some analyses
