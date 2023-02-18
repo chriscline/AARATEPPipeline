@@ -160,7 +160,12 @@ for iE = 1:numEvents
 	% note that this overwrites any previously specified urevent values
 	s.events(iE).urevent = length(EEG.urevent) + iE;
 end
-EEG.urevent = [EEG.urevent, rmfield(s.events,'urevent')];
+if ~isempty(EEG.urevent)
+	fieldsToRemove = setdiff(fieldnames(s.events), fieldnames(EEG.urevent));
+else
+	fieldsToRemove = {'urevent'};
+end
+EEG.urevent = [EEG.urevent, rmfield(s.events,fieldsToRemove)];
 iOE = 1;
 for iE = 1:length(s.events) % assumes events are ordered by increased latency
 	while iOE <= length(EEG.event) && EEG.event(iOE).latency < s.events(iE).latency

@@ -44,7 +44,7 @@ classdef c_FigureRecorder < handle
 			s = p.Results;
 			
 			unmatchedArgs = c_structToCell(p.Unmatched);
-			o = c_FigureRecorder('frameRate',s.numFrames/s.duration,unmatchedArgs{:},'method','VideoWriter');
+			o = c_FigureRecorder('frameRate',s.numFrames/s.duration,unmatchedArgs{:});
 			
 			if isempty(s.handle)
 				s.handle = gcf;
@@ -63,16 +63,18 @@ classdef c_FigureRecorder < handle
 			axis(axisHandles,'equal');
 			set(axisHandles,'XTickMode','manual','YTickMode','manual','ZTickMode','manual');
 			
-			
-			
 			o.start();
 			
 			% assume we only want to sweep azimuth
+			prog = c_progress(s.numFrames, 'Capturing frame %d/%d',...
+				'waitToPrint', 5);
 			for az = s.startView(1) + linspace(0,360,s.numFrames+1)
+				prog.update()
 				view(axisHandle,az,s.startView(2));
 				drawnow;
 				o.captureFrame(s.handle);
 			end
+			prog.stop();
 			
 			outputPath = o.outputPath;
 			
@@ -117,13 +119,31 @@ classdef c_FigureRecorder < handle
 			p = inputParser();
 			p.addParameter('outputDir','./Figures',@ischar);
 			p.addParameter('filename','FigureMovie.avi',@ischar);
+			p.addParameter('outputPath', '', @ischar);
 			p.addParameter('doOverwriteExisting',false,@islogical);
 			p.addParameter('doVerbose',false,@islogical);
-			p.addParameter('method','VideoWriter',@ischar);
+			p.addParameter('method','',@ischar);
 			p.addParameter('frameRate',10,@isscalar); % in fps
 			p.parse(varargin{:});
 			s = p.Results;
+
+			if ~isempty(s.outputPath)
+				assert(all(ismember({'outputDir', 'filename'}, p.UsingDefaults)));
+				[s.outputDir, s.filename, ext] = fileparts(s.outputPath);
+				s.filename = [s.filename ext];
+			end
+			s = rmfield(s, 'outputPath');
 			
+			if isempty(s.method)
+				[~, ~, ext] = fileparts(s.filename);
+				switch(ext)
+					case '.gif'
+						s.method = 'GifImwrite';
+					otherwise
+						s.method = 'VideoWriter';
+				end
+			end
+
 			% copy parsed input to object properties of the same name
 			fieldNames = fieldnames(s);
 			for iF=1:length(fieldNames)
@@ -212,7 +232,7 @@ classdef c_FigureRecorder < handle
 				case 'VideoWriter'
 					writeVideo(o.vidObj, getframe(s.graphicsHandle));
 				case 'GifImwrite'
-					f = getframe();
+					f = getframe(s.graphicsHandle);
 					im = f.cdata;
 					if isempty(o.ims)
 						o.ims = im;

@@ -14,8 +14,9 @@ if ~iscell(c)
 	error('Input should be a cell array');
 end
 
+s = struct();
+
 if isempty(c)
-	s = struct();
 	return;
 end
 
@@ -26,7 +27,11 @@ end
 for i=1:length(c)/2
 	j = i*2-1;
 	if p.Results.RecursionLevel < 2
-		s.(c{j}) = c{j+1};
+		if false
+			s.(c{j}) = c{j+1};
+		else
+			s = c_setField(s, c{j}, c{j+1});  % support field.subfield nesting
+		end
 	else
 		s.(c{j}) = c_cellToStruct(c{j+1},'RecursionLevel',p.Results.RecursionLevel-1);
 	end

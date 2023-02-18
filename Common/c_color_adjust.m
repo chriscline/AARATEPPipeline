@@ -8,6 +8,13 @@ s = p.Results;
 
 color = s.color;
 
+if size(color, 1) > 1
+	for iC = 1:size(color, 1)
+		color(iC, :) = c_color_adjust(color(iC, :), varargin{2:end});
+	end
+	return;
+end
+
 switch(s.adjustment)
 	case {'makeBrighter','makeDarker'}
 		if ~isempty(s.by)

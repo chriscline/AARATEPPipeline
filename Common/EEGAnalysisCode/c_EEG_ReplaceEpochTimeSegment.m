@@ -88,7 +88,7 @@ end
 
 function data = interpolateWithinIndices(data,indices, varargin)
 	p = inputParser();
-	p.addOptional('method', 'spline', @ischar);
+	p.addOptional('method', 'spline', @(x) ischar(x) || isscalar(x));
 	p.addParameter('prePostFitDurations', []);
 	p.addParameter('doDebug', false, @islogical);
 	p.addParameter('indexOfTimeZero', [], @isscalar); % only used for debug plotting
@@ -96,10 +96,10 @@ function data = interpolateWithinIndices(data,indices, varargin)
 	p.parse(varargin{:});
 	s = p.Results;
 	
-	if ismember(s.method, {'localSmoothedCubic', 'ARExtrapolation'})
+	if ischar(s.method) && ismember(s.method, {'localSmoothedCubic', 'ARExtrapolation'})
 		assert(~isempty(s.prePostFitDurations), 'prePostFitDurations must be specified for method ''%s''', s.method);
 	else
-		assert(isempty(s.prePostFitDurations), 'prePostFitDurations not used for method ''%s''', s.method);
+		assert(isempty(s.prePostFitDurations), 'prePostFitDurations not used for method ''%s''', c_toString(s.method));
 	end
 
 	assert(length(indices)==size(data,2));

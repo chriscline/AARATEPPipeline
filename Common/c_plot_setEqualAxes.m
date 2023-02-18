@@ -98,7 +98,8 @@ function setEqualAxis(axisHandles,axesToSet,lim,doSymmetry, doLink)
 			error('Partially specified datetime limits not currently supported');
 		end
 	else
-		if isnan(lim(1)) || isnat(lim(1)) % need to autodetect min
+		isnat_ = @(t) isa(t, 'datetim') && isnat(t);
+		if isnan(lim(1)) || isnat_(lim(1)) % need to autodetect min
 			minVal = inf;
 			for i=1:length(axisHandles)
 				newVal = paren(get(axisHandles(i),fieldsOfInterest{i}),1);
@@ -106,7 +107,7 @@ function setEqualAxis(axisHandles,axesToSet,lim,doSymmetry, doLink)
 			end
 			lim(1) = minVal;
 		end
-		if isnan(lim(2)) || isnat(lim(2)) % need to autodetect max
+		if isnan(lim(2)) || isnat_(lim(2)) % need to autodetect max
 			maxVal = -inf;
 			for i=1:length(axisHandles)
 				newVal = paren(get(axisHandles(i),fieldsOfInterest{i}),2);

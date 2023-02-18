@@ -140,7 +140,7 @@ elseif p.Results.doUseEEGLab
 			evtIndices = find(ismember({EEG.event.type},s.eventType));
 			evts = EEG.event(evtIndices);
 			evtLatencies = [evts.latency];
-			indicesToDelete = evtLatencies < s.timeBeforeEvent*EEG.srate | evtLatencies > (EEG.xmax - s.timeAfterEvent)*EEG.srate;
+			indicesToDelete = evtLatencies < s.timeBeforeEvent*EEG.srate+1 | evtLatencies > (EEG.xmax - s.timeAfterEvent)*EEG.srate+1;
 			if sum(indicesToDelete) > 0
 				c_saySingle('Dropping %d events too close to boundaries of data',sum(indicesToDelete));
 				EEG.event(evtIndices(indicesToDelete)) = [];

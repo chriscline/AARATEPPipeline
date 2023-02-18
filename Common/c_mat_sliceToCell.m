@@ -11,7 +11,7 @@ if nargin < 2
 	dim = c_findFirstNonsingletonDimension(mat);
 end
 
-assert(isnumeric(mat) || ischar(mat)); % not actually necessary, could be removed 
+%assert(isnumeric(mat) || ischar(mat)); % not actually necessary, could be removed 
 
 if isscalar(dim)
 	numSlices = size(mat,dim);

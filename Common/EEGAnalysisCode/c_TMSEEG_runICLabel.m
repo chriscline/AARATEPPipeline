@@ -25,6 +25,10 @@ c_sayDone();
 scores = EEG.etc.ic_classification.ICLabel.classifications;
 rejectComponents = false(size(scores, 1), 1);
 
+if any(isnan(scores(:)))
+	error('NaN in ICLabel classification scores. Problem with input data?')
+end
+
 if ~isnan(s.eyeComponentThreshold)
 	iEye = c_cell_findMatchingIndices({'Eye'}, EEG.etc.ic_classification.ICLabel.classes);
 	rejectComponents = rejectComponents | scores(:, iEye) > s.eyeComponentThreshold;

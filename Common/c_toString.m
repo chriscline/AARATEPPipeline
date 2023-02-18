@@ -164,8 +164,8 @@ function s = c_toString(c,varargin)
 			s = c_toString(cellstr(c),varargin{:});
 		end
 	elseif isobject(c)
-		s = sprintf('[Object]:\n');
-		tmp = indentLines(evalc('disp(c)'));
+		s = sprintf('[Object]:');
+		tmp = indentLines([sprintf('\n') evalc('disp(c)')]);
 		if length(tmp(:)) > printLimit*10
 			tmp = '<too long to print>';
 		end
