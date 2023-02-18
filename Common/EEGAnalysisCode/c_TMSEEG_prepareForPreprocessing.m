@@ -6,7 +6,7 @@ function [EEG, misc] = c_TMSEEG_prepareForPreprocessing(varargin)
 % - (If needed) Infer pulse event based on most frequent event
 % - (If needed) Infer reasonable epoch timespan (not yet implemented)
 % - (If needed) Concatenate multiple datasets into one EEG struct
-%	- (If needed) label each dataset prior to concatenation to allow later identification of orginal dataset
+%	- (If needed) label each dataset prior to concatenation to allow later identification of original dataset
 
 
 c_EEG_openEEGLabIfNeeded();
@@ -18,6 +18,7 @@ p.addParameter('inputFilePaths', '', @(x) ischar(x) || iscellstr(x));
 p.addParameter('inputEEGs',[],@(x) isstruct(x) || iscell(x));
 p.addParameter('inputDatasetLabels', 'auto', @(x) ischar(x) || iscellstr(x));
 p.addParameter('pulseEvent', 'auto', @ischar);
+p.addParameter('pulseEvents', {}, @iscellstr);  % can specify multiple pulse event types to be treated as the same
 p.addParameter('epochTimespan', [], @c_isSpan);
 p.parse(varargin{:});
 s = p.Results;
@@ -76,21 +77,30 @@ if ischar(s.inputDatasetLabels)
 end
 	
 %% infer pulse event type if requested
-if strcmpi(s.pulseEvent,'auto')
-	args = cellfun(@(EEG) EEG.event, EEGs, 'UniformOutput',false);
-	allEvents = cat(2,args{:});
-	[counts, eventTypes] = c_countUnique({allEvents.type});
-	[~,index] = max(counts);
-	mostFrequentEvent = eventTypes{index};
-	pulseEvent = mostFrequentEvent;
-	assert(~ismember(pulseEvent,{'boundary'}));
-	assert(c_str_matchRegex(pulseEvent, {'[RST][ 0-9]*','Pulse'}));
-	s.pulseEvent = pulseEvent;
-	c_saySingle('Inferred pulse event type: ''%s''', s.pulseEvent);
+if ~isempty(s.pulseEvents)
+	assert(ismember(p.UsingDefaults, 'pulseEvent'), 'Should not specify both pulseEvent and pulseEvents');
+	c_saySingle('Specified pulse event types: %s', c_toString(s.pulseEvents));
+	misc.pulseEvents = s.pulseEvents;
+	pulseEvents = s.pulseEvents;
 else
-	c_saySingle('Specified pulse event type: ''%s''', s.pulseEvent);
+	if strcmpi(s.pulseEvent,'auto')
+		args = cellfun(@(EEG) EEG.event, EEGs, 'UniformOutput',false);
+		allEvents = cat(2,args{:});
+		[counts, eventTypes] = c_countUnique({allEvents.type});
+		[~,index] = max(counts);
+		mostFrequentEvent = eventTypes{index};
+		pulseEvent = mostFrequentEvent;
+		assert(~ismember(pulseEvent,{'boundary'}));
+		assert(c_str_matchRegex(pulseEvent, {'[RST][ 0-9]*','Pulse'}));
+		s.pulseEvent = pulseEvent;
+		c_saySingle('Inferred pulse event type: ''%s''', s.pulseEvent);
+	else
+		c_saySingle('Specified pulse event type: ''%s''', s.pulseEvent);
+	end
+	misc.pulseEvent = s.pulseEvent;
+	pulseEvents = {s.pulseEvent};
 end
-misc.pulseEvent = s.pulseEvent;
+
 
 %%
 
@@ -110,9 +120,9 @@ if length(EEGs) > 1
 	extraTime = s.epochTimespan*2; % time in seconds before first and after last pulse to keep
 	for iD = 1:length(EEGs)
 		EEG = EEGs{iD};
-		firstEventIndex = find(ismember({EEG.event.type},{s.pulseEvent}),1,'first');
+		firstEventIndex = find(ismember({EEG.event.type}, pulseEvents),1,'first');
 		startTime = EEG.event(firstEventIndex).latency/EEG.srate + extraTime(1);
-		lastEventIndex = find(ismember({EEG.event.type},{s.pulseEvent}),1,'last');
+		lastEventIndex = find(ismember({EEG.event.type},pulseEvents),1,'last');
 		endTime = EEG.event(lastEventIndex).latency/EEG.srate + extraTime(2);
 		if startTime > 0 || (EEG.pnts-1)/EEG.srate - endTime > 0
 			c_saySingle('Cutting %.2f s at beginning and %.2f s at end', startTime, (EEG.pnts-1)/EEG.srate - endTime);
