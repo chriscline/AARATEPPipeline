@@ -174,9 +174,13 @@ if s.doDebug
 	intermediateLabels{end+1} = 'Baseline subtracted';
 end
 
-	%% High-pass filtering
+%% High-pass filtering
 c_say('Highpass filtering')
+timeToExtend = 0.5;
+maxTimeToExtend = min(abs(s.epochTimespan - s.artifactTimespan*3));
+timeToExtend = min(timeToExtend, maxTimeToExtend);
 EEG = c_TMSEEG_applyModifiedBandpassFilter(EEG,...
+	'piecewiseTimeToExtend', timeToExtend,...
 	'lowCutoff', s.bandpassFreqSpan(1),...
 	'artifactTimespan', s.artifactTimespan*3);
 c_sayDone();
