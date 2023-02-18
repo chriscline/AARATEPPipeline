@@ -175,6 +175,9 @@ end
 
 switch(s.replaceMethod)
 	case 'interpolate'
+		if length(badChannels) == EEG.nbchan
+			error('All channels marked as bad, cannot interpolate');
+		end
 		c_say('Interpolating %d bad channel%s', length(badChannels), c_strIfNumIsPlural(length(badChannels)));
 		EEG = eeg_interp(EEG, badChannels);
 		c_sayDone();

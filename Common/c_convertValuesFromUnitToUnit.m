@@ -149,6 +149,8 @@ function [numUnit, unitType] = strUnitAsNumUnit(strUnit)
 				switch(strPrefix)
 					case 'k'
 						numUnit = 1e3;
+					case 'd'
+						numUnit = 1e-1;
 					case 'c'
 						numUnit = 1e-2;
 					case 'm'

@@ -8,7 +8,7 @@ p.addParameter('doGroupByEpochGroup','auto',@islogical);
 p.addParameter('plotSubsetOfGroups',{},@(x) iscellstr(x) || isnumeric(x) || islogical(x));
 p.addParameter('axis',[],@isgraphics);
 p.addParameter('smoothWidth',1,@isscalar);
-p.addParameter('clim','auto',@c_isSpan);
+p.addParameter('clim','auto',@(x) c_isSpan(x) || (ischar(x) && ismember(x, {'auto', 'autoPos'})));
 p.addParameter('plotMethod','auto',@ischar);
 p.addParameter('YDir','reverse',@(x) ismember(x,{'normal','reverse'}));
 p.parse(varargin{:});
@@ -71,6 +71,8 @@ data = data(chanIndex,:,:);
 
 if strcmpi(s.clim,'auto')
 	s.clim = [-1 1]*max(abs(extrema(data(:))));
+elseif strcmpi(s.clim, 'autoPos')
+	s.clim = [0 max(data(:))];
 end
 
 if s.doGroupByEpochGroup
@@ -158,7 +160,7 @@ switch(s.plotMethod)
 		
 		
 		hold(s.axis,'on');
-		h(2) = line([0 0],extrema(y),'Color',[0 0 0],'LineWidth',2,'Parent',s.axis);
+		h(2) = line([0 0],extrema(y)+[-1 1]/2,'Color',[0 0 0],'LineWidth',2,'Parent',s.axis);
 		if ~prevHold
 			hold(s.axis,'off');
 		end

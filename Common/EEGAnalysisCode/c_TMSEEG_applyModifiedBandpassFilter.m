@@ -10,6 +10,7 @@ p.addParameter('filterMethod', 'butterworth', @ischar);
 p.addParameter('artifactTimespan', [], @c_isSpan); % this can be wider than typical timespan to be sure to remove large artifact signals 
 												   %  (only used for interpolating a temporary signal for filtering, not the output)
 p.addParameter('doPiecewise', true, @islogical);
+p.addParameter('piecewiseTimeToExtend', 0.5, @isscalar);
 p.addParameter('interpolationArgs', {}, @iscell); % optional, non-default interpolation args
 p.addParameter('doDebug', false, @islogical);
 p.parse(varargin{:});
@@ -43,18 +44,17 @@ if s.doPiecewise
 		prePostFitDurations = interpArgs.prePostFitDurations;
 	end
 	
-	timeToExtend = 0.5; % in s % TODO: make parameter above
-	assert(EEG.xmin < s.artifactTimespan(2) - timeToExtend);
-	assert(EEG.xmax > s.artifactTimespan(1) + timeToExtend);
+	assert(EEG.xmin < s.artifactTimespan(2) - s.piecewiseTimeToExtend);
+	assert(EEG.xmax > s.artifactTimespan(1) + s.piecewiseTimeToExtend);
 	
 	interpArgs = c_structToCell(interpArgs);
 	EEG_pre = c_EEG_ReplaceEpochTimeSegment(EEG,...
-		'timespanToReplace', [s.artifactTimespan(1), s.artifactTimespan(1) + timeToExtend],...
+		'timespanToReplace', [s.artifactTimespan(1), s.artifactTimespan(1) + s.piecewiseTimeToExtend],...
 		interpArgs{:},...
 		'prePostFitDurations', [prePostFitDurations(1) 0]);
 	
 	EEG_post = c_EEG_ReplaceEpochTimeSegment(EEG,...
-		'timespanToReplace', [s.artifactTimespan(2) - timeToExtend, s.artifactTimespan(2)],...
+		'timespanToReplace', [s.artifactTimespan(2) - s.piecewiseTimeToExtend, s.artifactTimespan(2)],...
 		interpArgs{:},...
 		'prePostFitDurations', [0 prePostFitDurations(2)]);
 
@@ -93,13 +93,14 @@ if s.doPiecewise
 					0 0.6 0;
 					0 0.4 0];
 		
-		plotIndices = EEG.times >= (s.artifactTimespan(2) - timeToExtend*0.5)*1e3 & EEG.times <= (s.artifactTimespan(1) + timeToExtend*0.5)*1e3;
+		plotIndices = EEG.times >= (s.artifactTimespan(2) - s.piecewiseTimeToExtend*0.5)*1e3 & EEG.times <= (s.artifactTimespan(1) + s.piecewiseTimeToExtend*0.5)*1e3;
 		assert(sum(plotIndices)>1);
 		
 		% plot original
 		axes(has(1));
 		hp = plot(EEG.times(plotIndices), EEG.data(iCh, plotIndices, iTr));
 		hp.Color = [colors(1,:) 1];
+		ylabel('Original');
 		
 		% plot pre-stim extrapolation
 		axes(has(2));
@@ -109,9 +110,10 @@ if s.doPiecewise
 		fitIndices = plotIndices & EEG.times >= (s.artifactTimespan(1) - prePostFitDurations(1))*1e3 & EEG.times <= s.artifactTimespan(1)*1e3;
 		hp = plot(EEG.times(fitIndices), EEG.data(iCh, fitIndices, iTr));
 		hp.Color = [colors(1,:) 1];
-		extrapIndices = plotIndices & EEG.times >= s.artifactTimespan(1)*1e3 & EEG.times <= (s.artifactTimespan(1) + timeToExtend)*1e3;
+		extrapIndices = plotIndices & EEG.times >= s.artifactTimespan(1)*1e3 & EEG.times <= (s.artifactTimespan(1) + s.piecewiseTimeToExtend)*1e3;
 		hp = plot(EEG.times(extrapIndices), EEG_pre.data(iCh, extrapIndices, iTr));
 		hp.Color = [colors(2,:), 0.5];
+		ylabel('pre-stim extrap');
 		
 		% leave a place for pre-stim extrap filtered
 		
@@ -123,9 +125,10 @@ if s.doPiecewise
 		fitIndices = plotIndices & EEG.times <= (s.artifactTimespan(2) + prePostFitDurations(1))*1e3 & EEG.times >= s.artifactTimespan(2)*1e3;
 		hp = plot(EEG.times(fitIndices), EEG.data(iCh, fitIndices, iTr));
 		hp.Color = [colors(1,:) 1];
-		extrapIndices = plotIndices & EEG.times <= s.artifactTimespan(2)*1e3 & EEG.times >= (s.artifactTimespan(2) - timeToExtend)*1e3;
+		extrapIndices = plotIndices & EEG.times <= s.artifactTimespan(2)*1e3 & EEG.times >= (s.artifactTimespan(2) - s.piecewiseTimeToExtend)*1e3;
 		hp = plot(EEG.times(extrapIndices), EEG_post.data(iCh, extrapIndices, iTr));
 		hp.Color = [colors(3,:), 0.5];
+		ylabel('post-stim extrap');
 		
 		% leave a place for post-stim extrap filtered
 		
@@ -142,6 +145,7 @@ if s.doPiecewise
 		hp.Color = [colors(1,:) 1];
 		hp = plot(EEG.times(blendIndices), tmpEEG.data(iCh, blendIndices, iTr));
 		hp.Color = [colors(4,:) 0.5];
+		ylabel('pre-filt blended');
 	end
 	
 	% apply filter
@@ -154,18 +158,20 @@ if s.doPiecewise
 		hp = plot(EEG.times(plotIndices), EEG.data(iCh, plotIndices, iTr));
 		hp.Color = [colors(1,:) 0.1];
 		hold on;
-		thisIndices = plotIndices & EEG.times <= (s.artifactTimespan(1) + timeToExtend)*1e3;
+		thisIndices = plotIndices & EEG.times <= (s.artifactTimespan(1) + s.piecewiseTimeToExtend)*1e3;
 		hp = plot(EEG.times(thisIndices), EEG_pre.data(iCh, thisIndices, iTr));
 		hp.Color = [colors(2,:) 0.5];
+		ylabel('pre-stim filt');
 		
 		% plot post-stim filtered
 		axes(has(5));
 		hp = plot(EEG.times(plotIndices), EEG.data(iCh, plotIndices, iTr));
 		hp.Color = [colors(1,:) 0.1];
 		hold on;
-		thisIndices = plotIndices & EEG.times >= (s.artifactTimespan(2) - timeToExtend)*1e3;
+		thisIndices = plotIndices & EEG.times >= (s.artifactTimespan(2) - s.piecewiseTimeToExtend)*1e3;
 		hp = plot(EEG.times(thisIndices), EEG_post.data(iCh, thisIndices, iTr));
 		hp.Color = [colors(3,:) 0.5];
+		ylabel('post-stim filt');
 	end
 	
 	% blend post-filter results
@@ -183,6 +189,7 @@ if s.doPiecewise
 		hold on;
 		hp = plot(EEG.times(plotIndices), tmpEEG2.data(iCh, plotIndices, iTr));
 		hp.Color = [colors(4,:) 0.5];
+		ylabel('blended filt');
 	end
 	
 	tmpEEG.data = tmpEEG.data - tmpEEG2.data;
@@ -196,6 +203,7 @@ if s.doPiecewise
 		hold on;
 		hp = plot(EEG.times(plotIndices), tmpEEG.data(iCh, plotIndices, iTr));
 		hp.Color = [colors(4,:) 0.5];
+		ylabel('residual');
 		
 		% prepare to plot final
 		axes(has(9));
@@ -214,6 +222,7 @@ if s.doPiecewise
 		c_plot_setEqualAxes(has);
 		xlim(extrema(EEG.times(plotIndices)));
 		xlabel('Time (ms)');
+		ylabel('final');
 		
 		for iSP = 1:numSubplots
 			if iSP < numSubplots

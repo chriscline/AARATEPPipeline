@@ -12,7 +12,7 @@ defaultTraceColors = [0 0 1; 0 1 0; 1 0 0];
 
 p = inputParser();
 p.addRequired('EEG',@isstruct);
-p.addParameter('TPOI',[],@(x) isvector(x) || ismatrix(x)); % if ismatrix, height should be num trials
+p.addParameter('TPOI',[],@(x) isvector(x) || ismatrix(x)); % if ismatrix, height should be num trials; units in sec
 p.addParameter('TPOIData',[],@isnumeric);
 p.addParameter('TPOILabels',{},@iscellstr);
 p.addParameter('numMapRows',1,@isscalar); % for many TPOIs, may want to stagger in multiple rows
@@ -31,6 +31,7 @@ p.addParameter('plotButterflyWithSrcROIs', [], @isstruct); % provide as list of 
 p.addParameter('srcROIData', [], @isnumeric); % only used if plotButterflyWithSrcROIs is nonempty; % assumed to be in units of uA-m
 p.addParameter('doPlotInflated',[false true],@(x) islogical(x) && length(x) <= 2);
 p.addParameter('doClickToPlotTopoAtTime', true, @islogical);
+p.addParameter('topoplotKwargs', {}, @iscell);  % optional extra args to provide to topoplot, e.g. for custom styling
 p.addParameter('epochIndices',[],@islogical);
 p.addParameter('parent',[],@c_ishandle);
 p.addParameter('traceColors',defaultTraceColors,@ismatrix);
@@ -408,7 +409,11 @@ end
 
 %%
 if isempty(s.ylim)
-	globalYLim = [-1 1]*max(abs(extrema(EEG.data(:))));
+	if ~isempty(s.plotButterflyWithSrcROIs)
+		globalYLim = [-1 1]*max(abs(extrema(roiData(:))));
+	else
+		globalYLim = [-1 1]*max(abs(extrema(EEG.data(:))));
+	end
 	if s.doSymmetricYLim
 		ylim(ha_ep, max(abs(ha_ep.YLim))*[-1 1]);
 	end
@@ -518,7 +523,8 @@ if s.doPlotSensorSpace && doPlotTopos
 		topoplot(vals,EEG.chanlocs,...
 			'whitebk','on',...
 			'colormap',parula(),...
-			'intrad',0.5);
+			'intrad',0.5,...
+			s.topoplotKwargs{:});
 		set(ha_scalps(end),'XLim',[-1 1]*0.57,'YLim',[-1 1]*0.6);
 		ha_scalps(end).Position = ha_scalps(end).OuterPosition - [0 0 0 c_if(latencyTitlesNeedToBePlotted,0.1,0)];
 	end
@@ -559,6 +565,8 @@ if s.doPlotSensorSpace && doPlotTopos
 	end
 	ssht.resumeAutoRetiling();
 	sht.resumeAutoRetiling();
+
+	structOut.ha_scalps = ha_scalps;
 end
 
 %% plot source maps
@@ -586,15 +594,17 @@ if s.doPlotSourceSpace && doPlotTopos
 			% (slightly inefficient since calculated twice if plotting uninflated and inflated)
 			
 			if isempty(s.srcData) && isempty(s.srcTPOIData)
-				if ~ismember(p.Results.trialAggFn, {'mean', 'nanmean'})
-					error('Not implemented'); % TODO: change applySrcKernel call below and unit labels as needed for other agg fns
+				if ~ischar(p.Results.trialAggFn) || ~ismember(p.Results.trialAggFn, {'mean', 'nanmean'})
+					% note: using non-default trialAggFn. Below function generally assumes a mean-like agg fn 
+					%  and may produce unreasonable results with a more exotic function like SNR or dB conversion.
 				end
 				%TODO: if EEG.src.data available, use above if extracting EEG.data into s.TPOIData
 				srcData = c_EEG_applySrcKernel(EEG,...
 					'srcKernel', s.srcKernel,...
 					'data',s.TPOIData(:,iT,:),...
 					'epochIndices',s.epochIndices,...
-					'meanDims',3);
+					'aggFn', {@nanmean, @nanmean, s.trialAggFn},...
+					'aggDims',3);
 			else
 				assert(~isempty(s.srcTPOIData)); % was either provided or should have been calculated above
 				srcData = s.trialAggFn(s.srcTPOIData(:, iT, s.epochIndices), 3);
@@ -722,7 +732,7 @@ if s.doVideo
 
 				srcData = c_EEG_applySrcKernel(EEG,...
 					'epochIndices',s.epochIndices,...
-					'meanDims',3);
+					'aggDims',3);
 			else
 				srcData = s.trialAggFn(s.srcData(:, :, s.epochIndices), 3);
 			end
@@ -784,7 +794,8 @@ if s.doVideo
 			topoplot(vals,EEG.chanlocs,...
 				'whitebk','on',...
 				'colormap',parula(),...
-				'intrad',0.5);
+				'intrad',0.5,...
+				s.topoplotKwargs{:});
 			set(ha_scalp,'XLim',[-1 1]*0.57,'YLim',[-1 1]*0.6);
 			if ~s.doNormalizeMaps
 				ha_scalp.CLim = s.ylim;
@@ -801,7 +812,7 @@ if s.doVideo
 				srcData = c_EEG_applySrcKernel(EEG,...
 					'data',EEG.data(:,iiT,:),...
 					'epochIndices',s.epochIndices,...
-					'meanDims',3);
+					'aggDims',3);
 			else
 				srcData = s.trialAggFn(s.srcData(:, :, s.epochIndices));
 			end
@@ -916,7 +927,8 @@ end
 topoplot(vals,EEG.chanlocs,...
 	'whitebk','on',...
 	'colormap',parula(),...
-	'intrad',0.5);
+	'intrad',0.5,...
+	s.topoplotKwargs{:});
 set(ha,'XLim',[-1 1]*0.57,'YLim',[-1 1]*0.6);
 
 title(sprintf('%s ms',c_toString(round(EEG.times(iT)))));

@@ -1,6 +1,6 @@
 function EEG = c_TMSEEG_Preprocess_AARATEPPipeline(varargin)
 % c_TMSEEG_Preprocess_AARATEPPipeline - Preprocess raw TMS-EEG data
-%
+% 
 % Inputs:
 %   EEG: input dataset in EEGLab struct format, assumed to not yet have been epoched
 %   'pulseEvent': string indicating event type marking each pulse 
@@ -22,6 +22,8 @@ function EEG = c_TMSEEG_Preprocess_AARATEPPipeline(varargin)
 %   'badChannelThreshold': scalar, threshold at which to classify a channel as bad or good. Exact
 %                           meaning of this threshold depends on the badChannelDetectionMethod
 %   'SOUNDlambda': lambda regularization parameter used in SOUND
+%   'initialEyeComponentThreshold': threshold for rejecting eye-related ICs during early eye-blink 
+%						rejection stage. Set to 1 or greater to skip early eye IC rejection stage.
 %   'leadFieldPath': path to lead field file or lead field matrix itself to be used by SOUND. If 
 %                     empty, SOUND will use a template lead field
 %   'doDecayRemovalPerTrial': whether to do decay fitting and removal partially on a per-trial basis
@@ -33,12 +35,12 @@ function EEG = c_TMSEEG_Preprocess_AARATEPPipeline(varargin)
 %   'onOverRejection': string, what to do if too many components are rejected.
 %   'doDebug': bool, whether to keep intermediate results and generate additional plots
 %   'doPlotFinalTimtopo': bool, whether to generate final timtopo plot after preprocessing
+%   'maximizePlotsToMonitor': which monitor index on which to show debug plots
 %   'plotXLim': timespan, in seconds, for final and debug timtopo plots
 %   'plotTPOIs': time-points of interest, in seconds, for final and debug timtopo plots (e.g. 
 %                 typical TEP latencies)
 %   'plotChans': channels of interest, either as a cell list of labels or vector of channel indices,
 %                 to be included in debug erpimage plots.
-	
 
 %% add dependencies to path
 persistent pathModified
@@ -67,6 +69,7 @@ p.addParameter('downsampleTo', 1000, @isscalar);
 p.addParameter('bandpassFreqSpan', [1 200], @c_isSpan);
 p.addParameter('badChannelDetectionMethod', 'TESA_DDWiener_PerTrial', @ischar);
 p.addParameter('badChannelThreshold', 10, @isscalar);
+p.addParameter('initialEyeComponentThreshold', 0.9, @isscalar);
 p.addParameter('SOUNDlambda', 10^-1.5, @isscalar);
 p.addParameter('leadFieldPath', '', @(x) ischar(x) || ismatrix(x));  % used by SOUND
 p.addParameter('doDecayRemovalPerTrial', true, @islogical);
@@ -76,6 +79,7 @@ p.addParameter('onOverRejection', 'pause', @ischar);
 p.addParameter('doPostICAArtifactInterpolation', false, @islogical);
 p.addParameter('doDebug', false, @islogical);
 p.addParameter('doPlotFinalTimtopo', true, @islogical);
+p.addParameter('maximizePlotsToMonitor', 2, @isschar);
 p.addParameter('plotXLim', [-0.1 0.35], @c_isSpan);
 p.addParameter('plotTPOIs', defaultTPOIs, @isnumeric);
 p.addParameter('plotChans', {'Fz', 'Pz'}, @(x) iscellstr(x) || isnumeric(x));
@@ -84,6 +88,7 @@ s = p.Results;
 EEG = s.EEG;
 
 md = struct();
+md.pipelineVersion = '2.0.0';
 
 % check for required named arguments
 assert(~isempty(s.pulseEvent), 'Pulse event must be specified');
@@ -174,9 +179,13 @@ if s.doDebug
 	intermediateLabels{end+1} = 'Baseline subtracted';
 end
 
-	%% High-pass filtering
+%% High-pass filtering
 c_say('Highpass filtering')
+timeToExtend = 0.5;
+maxTimeToExtend = min(abs(s.epochTimespan - s.artifactTimespan*3));
+timeToExtend = min(timeToExtend, maxTimeToExtend);
 EEG = c_TMSEEG_applyModifiedBandpassFilter(EEG,...
+	'piecewiseTimeToExtend', timeToExtend,...
 	'lowCutoff', s.bandpassFreqSpan(1),...
 	'artifactTimespan', s.artifactTimespan*3);
 c_sayDone();
@@ -186,11 +195,13 @@ if s.doDebug
 end
 
 %% basic channel rejection
+doReplaceBadChanImmediately = true;
+
 [EEG, misc] = c_TMSEEG_detectBadChannels(EEG,...
 	'detectionMethod', s.badChannelDetectionMethod,...
 	'artifactTimespan', s.artifactTimespan*2,...
 	'threshold', s.badChannelThreshold,...
-	'replaceMethod', 'none',...
+	'replaceMethod', c_if(doReplaceBadChanImmediately, 'interpolate', 'none'),...
 	'doPlot', true);
 
 badChannels = misc.badChannelIndices;
@@ -204,13 +215,89 @@ md.earlyRejectedChannels = badChannels;
 
 if s.doDebug
 	if ~isempty(badChannels)
-		intermediateEEGs{end+1} = pop_select(EEG, 'nochannel', badChannels);
+		if doReplaceBadChanImmediately
+			intermediateEEGs{end+1} = EEG;
+		else
+			intermediateEEGs{end+1} = pop_select(EEG, 'nochannel', badChannels);
+		end
 		intermediateLabels{end+1} = 'After channel rejection';
 	else
 		intermediateEEGs{end+1} = EEG;
 		intermediateLabels{end+1} = '(After channel rejection)';
 	end
 	tmpEEG = [];
+end
+
+%% Initial eye-blink removal
+% Note: do this prior to SOUND, since SOUND tends to make eye blink topographies look more "brain-like" in a way
+%  that makes them more difficult to reject later.
+
+if s.initialEyeComponentThreshold < 1
+	c_say('Rereferencing');
+	EEG = pop_reref(EEG, []);
+	c_sayDone();
+	
+	c_say('Running early ICA for eye artifacts');
+	EEG = c_EEG_ICA(EEG, 'method', 'fastica');
+	c_sayDone();
+	
+	c_say('Labeling ICs using ICLabel');
+	[EEG, misc] = c_TMSEEG_runICLabel(EEG,...
+		'eyeComponentThreshold', s.initialEyeComponentThreshold,...
+		'muscleComponentThreshold', nan,...
+		'brainComponentThreshold', nan,...
+		'otherComponentThreshold', nan,...
+		'doPlot', true,...
+		'doRejection', false);
+	c_sayDone();
+
+	reportInfo.eyeICA_numComp = length(misc.rejectComponents);
+	reportInfo.eyeICA_numRejComp = sum(misc.rejectComponents);
+
+	if true
+		figure(misc.hf);
+		c_FigurePrinter.copyToFile(fullfile(s.outputDir, [s.outputFilePrefix, '_QC_EyeICA_ClassifiedComponents.png']),...
+			'magnification', 2,...
+			'doTransparent', false);
+		close(misc.hf);
+	end
+
+	if  reportInfo.eyeICA_numRejComp > 0
+		c_say('Rejecting %d/%d components', reportInfo.eyeICA_numRejComp, reportInfo.eyeICA_numComp);
+		if false
+			EEG = pop_subcomp(EEG, find(misc.rejectComponents));
+		else
+			compproj_toRemove = EEG.icawinv(:, misc.rejectComponents) * eeg_getdatact(EEG, 'component', find(misc.rejectComponents), 'reshape', '2d');
+			compproj_toRemove = reshape(compproj_toRemove, size(compproj_toRemove, 1), EEG.pnts, EEG.trials);
+			if false
+				EEG_a = pop_subcomp(EEG, find(misc.rejectComponents));
+				EEG_b = EEG;
+				EEG_b.data = EEG_b.data - compproj_toRemove;
+				c_EEG_plotRawComparison({EEG_a, EEG_b}, 'descriptors', {'pop_subcomp', 'custom subcomp'});
+				EEG_c = EEG;
+				EEG_c.data = EEG_b.data - EEG_a.data;
+				pop_eegplot(EEG_c, 1, 1, 0);
+			end
+			EEG.data = EEG.data - compproj_toRemove;
+		end
+		c_sayDone();
+	end
+	
+	if s.doDebug
+		intermediateEEGs{end+1} = EEG;
+		intermediateLabels{end+1} = sprintf('Eye components%s removed', c_if(reportInfo.eyeICA_numRejComp > 0, '', ' (not)'));
+	end
+else
+	c_saySingle('Skipping early eye component rejection stage.')
+end
+
+
+if true
+	% save EEG prior to SOUND for some analyses
+	outputPath = fullfile(s.outputDir, [s.outputFilePrefix '_preSOUND.mat']);
+	c_say('Prior to ICA rejection, saving results to %s', outputPath);
+	save(outputPath, 'EEG', 'md');
+	c_sayDone();
 end
 
 %% SOUND
@@ -226,6 +313,14 @@ c_sayDone();
 if s.doDebug
 	intermediateEEGs{end+1} = EEG;
 	intermediateLabels{end+1} = 'After SOUND';
+end
+
+if true
+    % save EEG prior to component rejection to allow different component rejection choices later
+    outputPath = fullfile(s.outputDir, [s.outputFilePrefix '_preDecayRemoval.mat']);
+    c_say('Prior to ICA rejection, saving results to %s', outputPath);
+    c_save(outputPath, 'EEG', 'md');
+    c_sayDone();
 end
 
 %% decay fitting and removal
@@ -340,7 +435,7 @@ if true
     % save EEG prior to component rejection to allow different component rejection choices later
     outputPath = fullfile(s.outputDir, [s.outputFilePrefix '_preICARejection.mat']);
     c_say('Prior to ICA rejection, saving results to %s', outputPath);
-    save(outputPath, 'EEG', 'md');
+    c_save(outputPath, 'EEG', 'md');
     c_sayDone();
 end
 
@@ -396,7 +491,7 @@ end
 %% save output
 outputPath = fullfile(s.outputDir, [s.outputFilePrefix '.mat']);
 c_say('Saving results to %s', outputPath);
-save(outputPath, 'EEG', 'md');
+c_save(outputPath, 'EEG', 'md');
 c_sayDone();
 
 %% plot
@@ -405,6 +500,7 @@ if s.doPlotFinalTimtopo
 	outputPath = fullfile(s.outputDir, [s.outputFilePrefix '_Plot_TEPTimtopo.png']);
 	hf = figure;
 	tmp = c_EEG_plotTimtopo(EEG,...
+		'doShowColorbars', false,... 
 		'doPlotGMFA', true,...
 		'TPOI', s.plotTPOIs,...
 		'xlim', s.plotXLim*1e3);
@@ -423,7 +519,7 @@ if s.doDebug
     
     outputPath = fullfile(s.outputDir, [s.outputFilePrefix '_Debug_IntermediateTEPs.png']);
     hf = gcf;
-    c_fig_arrange('maximize', hf);
+    c_fig_arrange('maximize', hf, 'monitor', s.maximizePlotsToMonitor);
     c_FigurePrinter.copyToFile(outputPath, 'magnification', 2, 'doTransparent', false);
     close(hf);
 	
@@ -432,7 +528,7 @@ if s.doDebug
 
 		outputPath = fullfile(s.outputDir, [s.outputFilePrefix '_Debug_IntermediateERPIms.png']);
 		hf = gcf;
-		c_fig_arrange('maximize', hf);
+		c_fig_arrange('maximize', hf, 'monitor',  s.maximizePlotsToMonitor);
 		c_FigurePrinter.copyToFile(outputPath, 'magnification', 2, 'doTransparent', false);
 		close(hf);
 	end
@@ -448,6 +544,7 @@ ht = c_GUI_Tiler();
 ht.pauseAutoRetiling();
 for iEEG = 1:length(EEGs)
     tmp = c_EEG_plotTimtopo(EEGs{iEEG},...
+		'doShowColorbars', false,...
         'TPOI', s.plotTPOIs,...
 		'doPlotGMFA', true,...
         'xlim', [-100 350],...
@@ -460,7 +557,7 @@ if length(EEGs) < 4
     hf.Position = [50 50 700*length(EEGs) 600];
     ht.numRows = 1;
 else
-    c_fig_arrange('maximize', hf);
+    c_fig_arrange('maximize', hf, 'monitor',  s.maximizePlotsToMonitor);
 end
 ht.resumeAutoRetiling();
 
@@ -508,7 +605,7 @@ if length(EEGs) < 4
     hf.Position = [50 50 700*length(EEGs) 600];
     ht.numRows = 1;
 else
-    c_fig_arrange('maximize', hf);
+    c_fig_arrange('maximize', hf, 'monitor',  s.maximizePlotsToMonitor);
 end
 ht.resumeAutoRetiling();
 

@@ -144,8 +144,7 @@ for index = 1:length(events)
 		   indexes(index)=1;
 	   elseif size(data,3)==1
 		   % assume not previously epoched
-		   
-		   keyboard %TODO
+		   error('Not implemented');
 	   else
 		   error('unsupported');
 	   end

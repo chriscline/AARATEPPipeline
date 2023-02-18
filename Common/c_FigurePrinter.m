@@ -124,6 +124,15 @@ classdef c_FigurePrinter < handle
 			c_FigurePrinter.initialize();
 			origBackground = get(s.hf,'Color');
 			c_saySingle('Setting axis background');
+
+			[~,~,ext] = fileparts(s.filepath);	
+
+			if ismember(ext, {'.svg'})
+				% transparency not supported in export (but background can be separated by editing vector graphic later)
+				% force false to at least set backgrounds white
+				s.doTransparent = false;  
+			end
+
 			if s.doTransparent
 				set(s.hf, 'Color', 'none'); 
 			else
@@ -147,17 +156,36 @@ classdef c_FigurePrinter < handle
 				end
 			end
 			c_saySingle('Exporting figure %s', s.filepath);
-			[~,~,ext] = fileparts(s.filepath);
-			assert(strcmpi(ext,'.png'),'Only .png implemented');
+			switch(ext)
+				case '.png'
+					extraArgs = {};
+					if ~s.doCrop
+						extraArgs = [extraArgs, '-nocrop'];
+					end
+					if s.doTransparent
+						extraArgs = [extraArgs, '-transparent'];
+					end
+					try
+						export_fig(s.filepath,'-png',['-m' num2str(s.magnification)],'-opengl',extraArgs{:},s.hf);
+					catch
+						% try again
+						pause(0.5)
+						try
+							export_fig(s.filepath,'-png',['-m' num2str(s.magnification)],'-opengl',extraArgs{:},s.hf);
+						catch
+							% try one last time after longer delay
+							pause(5)
+							export_fig(s.filepath,'-png',['-m' num2str(s.magnification)],'-opengl',extraArgs{:},s.hf);
+						end
+					end
+		
+				case '.svg'
+					saveas(s.hf, s.filepath)
 			
-			extraArgs = {};
-			if ~s.doCrop
-				extraArgs = [extraArgs, '-nocrop'];
+				otherwise
+					error('%s export not implemented', ext)
 			end
-			if s.doTransparent
-				extraArgs = [extraArgs, '-transparent'];
-			end
-			export_fig(s.filepath,'-png',['-m' num2str(s.magnification)],'-opengl',extraArgs{:},s.hf);
+			
 			
 			c_saySingle('Resetting axis background');
 			set(s.hf,'Color',origBackground);

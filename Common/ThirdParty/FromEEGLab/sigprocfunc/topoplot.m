@@ -1215,8 +1215,12 @@ if ~strcmpi(STYLE,'blank') % if draw interpolated scalp map
 
 % 7/30/2014 Ramon: +-5% for the color limits were added
 cax_sgn = sign([amin amax]);                                                  % getting sign
-caxis([amin+cax_sgn(1)*(0.05*abs(amin)) amax+cax_sgn(2)*(0.05*abs(amax))]);   % Adding 5% to the color limits
-
+newCLims = [amin+cax_sgn(1)*(0.05*abs(amin)) amax+cax_sgn(2)*(0.05*abs(amax))];
+if diff(newCLims)==0
+	newCLims(2) = newCLims(2) + 1;
+end
+caxis(newCLims);   % Adding 5% to the color limits
+	
 else % if STYLE 'blank'
 %
 %%%%%%%%%%%%%%%%%%%%%%% Draw blank head %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

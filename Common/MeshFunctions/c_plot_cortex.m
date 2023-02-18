@@ -40,6 +40,7 @@ p.addParameter('dispUnit','pA-m');
 p.addParameter('doPlotVertexNormals',false,@islogical);
 p.addParameter('doInvertVertexNormals',true,@islogical);
 p.addParameter('doLabelROIs',false,@islogical);
+p.addParameter('ROILabelOrigin', [], @isvector);  % if empty, will use center of mesh
 p.addParameter('doUseROISeedsForLabeling',true,@islogical);
 p.addParameter('doDoublePlot',false,@islogical); % inflated and non-inflated
 p.addParameter('doublePlotParent',[],@isgraphics);
@@ -243,17 +244,21 @@ if ~isempty(ROIs)
 				coords(r,:) = roiVertices(index,:);
 			end
 		end
-		globalCenter = mean(extrema(mesh_cortex.Vertices),2)';
-		maxDist = max(c_norm(bsxfun(@minus,mesh_cortex.Vertices,globalCenter),2,2));
-		centeredCoords = bsxfun(@minus,coords,globalCenter);
+		if isempty(s.ROILabelOrigin)
+			globalCenter = mean(extrema(mesh_cortex.Vertices),2)';
+			s.ROILabelOrigin = globalCenter;
+		end
+		
+		maxDist = max(c_norm(bsxfun(@minus,mesh_cortex.Vertices, s.ROILabelOrigin),2,2));
+		centeredCoords = bsxfun(@minus,coords, s.ROILabelOrigin);
 		scatter3(s.axis,coords(:,1),coords(:,2),coords(:,3));
 		
 		for r=1:numROIs
 			
 			labelCoord = centeredCoords(r,:) / c_norm(centeredCoords(r,:),2); % unit vector
-			dist = max(c_norm(bsxfun(@minus,mesh_cortex.Vertices(ROIs.nodeIndices{r},:),globalCenter),2,2));
+			dist = max(c_norm(bsxfun(@minus,mesh_cortex.Vertices(ROIs.nodeIndices{r},:),s.ROILabelOrigin),2,2));
 			labelCoord = labelCoord * (dist + 0.3*maxDist);
-			labelCoord = labelCoord + globalCenter;
+			labelCoord = labelCoord + s.ROILabelOrigin;
 			
 			hl = line(...
 				[labelCoord(1) coords(r,1)],...

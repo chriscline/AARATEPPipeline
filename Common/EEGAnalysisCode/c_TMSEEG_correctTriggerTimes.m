@@ -26,6 +26,9 @@ EEG = c_EEG_epoch(EEG,...
 	'eventType',s.eventType);
 c_sayDone();
 
+assert(EEG.xmin <= s.correctionLimits(1))
+assert(EEG.xmax >= s.correctionLimits(2))
+
 baselineTimespan = [max(s.earliestBaselineTime,EEG.xmin) s.correctionLimits(1)];
 
 if s.doBaselineSubtraction	

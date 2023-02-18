@@ -10,6 +10,7 @@ In brief, this pipeline consists of the following stages:
 - Baseline correction
 - High-pass filtering
 - Bad-channel identification
+- Early eye-related IC rejection (added in v2.0.0)
 - SOUND
 - Decay component removal
 - Artifact interpolation

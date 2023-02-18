@@ -25,6 +25,8 @@ p.addParameter('ptLabels',[],@iscellstr);
 p.addParameter('doPlotLabels',false,@(x) islogical(x) || (ischar(x) && strcmpi(x,'auto'))); % 'auto'=plot if specified
 p.addParameter('labelColors',[0.4 0.4 0.4],@ismatrix);
 p.addParameter('labelLineColors',[0.4 0.4 0.4],@ismatrix);
+p.addParameter('labelOrigin', [], @ismatrix);  % if empty, will use mean of pts
+p.addParameter('labelOffset', 0.3, @isscalar);
 p.addParameter('markerType','sphere',@(x) ischar(x) || c_mesh_isValid(x)); % valid: 'sphere', custom mesh, or any of scatter3's 'o+*.xsd^v><ph' or 'none'
 												% if a custom mesh is specified, will be scaled by ptSize (i.e. should start as unit scale)
 p.addParameter('ptRotations',[], @isnumeric); % [Nx3x3]: one rotation matrix per point, for specifying varying orientations of custom mesh markerType
@@ -107,9 +109,11 @@ if ~isempty(s.ptLabels)
 	if (islogical(s.doPlotLabels) && s.doPlotLabels) || (ischar(s.doPlotLabels) && strcmpi(s.doPlotLabels,'auto'))
 		h1 = [];
 		h2 = [];
-		centerXYZ = nanmean(s.pts,1);
+		if isempty(s.labelOrigin)
+			s.labelOrigin = nanmean(s.pts,1);
+		end
 		for iP = 1:numPts
-			labelCoords = s.pts(iP,:) + (s.pts(iP,:)-centerXYZ)*0.3;
+			labelCoords = s.pts(iP,:) + (s.pts(iP,:)-s.labelOrigin)*s.labelOffset;
 			args = c_mat_sliceToCell(labelCoords);
 			h1(iP) = text(args{:},s.ptLabels{iP},...
 				'Color',s.labelColors(mod(iP-1,size(s.labelColors,1))+1,:),...

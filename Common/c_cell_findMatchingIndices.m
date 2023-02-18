@@ -10,7 +10,12 @@ function indices = c_cell_findMatchingIndices(findQueries,inCellArray)
 	assert(iscell(inCellArray));
 	indices = nan(1,length(findQueries));
 	for iQ = 1:length(findQueries)
-		index = find(ismember(inCellArray,findQueries{iQ}));
+		try
+			index = find(ismember(inCellArray,findQueries{iQ}));
+		catch 
+			% try using isequal element-wise instead, since ismember can't handle non-character cell arrays
+			index = find(cellfun(@(possibleMatch) isequal(possibleMatch, findQueries{iQ}), inCellArray));
+		end
 		if isempty(index)
 			error('Query %s not found in %s',c_toString(findQueries{iQ}),c_toString(inCellArray));
 		end

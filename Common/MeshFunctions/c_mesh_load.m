@@ -83,7 +83,7 @@ switch(lower(extension))
 		
 	case '.gii'
 		[~,~,secondaryExt] = fileparts(filename);
-		assert(strcmpi(secondaryExt,'.surf'),'Only ''.surf.gii'' gifti files are supported');
+		%assert(strcmpi(secondaryExt,'.surf'),'Only ''.surf.gii'' gifti files are supported');
 		% gifti surface format
 		c_mesh_AddGIfTILibToPath();
 

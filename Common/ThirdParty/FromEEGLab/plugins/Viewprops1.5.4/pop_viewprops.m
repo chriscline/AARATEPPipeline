@@ -44,7 +44,7 @@ function [com] = pop_viewprops( EEG, typecomp, chanorcomp, spec_opt, erp_opt, sc
 COLACC = [0.75 1 0.75];
 COLREJ = [1 0.6 0.6];
 
-PLOTPERFIG = 96;
+PLOTPERFIG = 128;
 com = '';
 
 if nargin < 1

@@ -117,9 +117,9 @@ if s.doPlotGMFA
 	s.COI = 1; 
 end
 
-if ~c_EEG_isEpoched(EEG)
-	error('EEG not epoched.');
-end
+% if ~c_EEG_isEpoched(EEG)
+% 	error('EEG not epoched.');
+% end
 	
 t = EEG.times;
 	
