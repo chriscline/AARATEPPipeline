@@ -88,7 +88,7 @@ s = p.Results;
 EEG = s.EEG;
 
 md = struct();
-md.pipelineVersion = '2.0.0';
+md.pipelineVersion = '2.0.1';
 
 % check for required named arguments
 assert(~isempty(s.pulseEvent), 'Pulse event must be specified');
@@ -251,8 +251,8 @@ if s.initialEyeComponentThreshold < 1
 		'doRejection', false);
 	c_sayDone();
 
-	reportInfo.eyeICA_numComp = length(misc.rejectComponents);
-	reportInfo.eyeICA_numRejComp = sum(misc.rejectComponents);
+	md.eyeICA_numComp = length(misc.rejectComponents);
+	md.eyeICA_numRejComp = sum(misc.rejectComponents);
 
 	if true
 		figure(misc.hf);
@@ -262,8 +262,8 @@ if s.initialEyeComponentThreshold < 1
 		close(misc.hf);
 	end
 
-	if  reportInfo.eyeICA_numRejComp > 0
-		c_say('Rejecting %d/%d components', reportInfo.eyeICA_numRejComp, reportInfo.eyeICA_numComp);
+	if  md.eyeICA_numRejComp > 0
+		c_say('Rejecting %d/%d components', md.eyeICA_numRejComp, md.eyeICA_numComp);
 		if false
 			EEG = pop_subcomp(EEG, find(misc.rejectComponents));
 		else
@@ -285,7 +285,7 @@ if s.initialEyeComponentThreshold < 1
 	
 	if s.doDebug
 		intermediateEEGs{end+1} = EEG;
-		intermediateLabels{end+1} = sprintf('Eye components%s removed', c_if(reportInfo.eyeICA_numRejComp > 0, '', ' (not)'));
+		intermediateLabels{end+1} = sprintf('Eye components%s removed', c_if(md.eyeICA_numRejComp > 0, '', ' (not)'));
 	end
 else
 	c_saySingle('Skipping early eye component rejection stage.')
