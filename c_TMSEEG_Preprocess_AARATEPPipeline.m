@@ -77,6 +77,7 @@ p.addParameter('doDecayRemovalPerTrial', true, @islogical);
 p.addParameter('lineNoiseFreq', 60, @isscalar);  % in Hz
 p.addParameter('lineNoiseNumHarmonics', 1, @isscalar);
 p.addParameter('ICAType', 'fastica', @ischar);
+p.addParameter('brainComponentThreshold', 0.3, @isscalar);
 p.addParameter('stimMuscleComponentThreshold', 8, @isscalar);
 p.addParameter('onOverRejection', 'pause', @ischar);
 p.addParameter('doPostICAArtifactInterpolation', false, @islogical);
@@ -381,6 +382,7 @@ c_sayDone();
 
 c_say('Labeling ICs using ICLabel');
 [EEG, misc] = c_TMSEEG_runICLabel(EEG,...
+	'brainComponentThreshold', s.brainComponentThreshold,...
     'doPlot', true,...
     'doRejection', false);
 c_sayDone();
