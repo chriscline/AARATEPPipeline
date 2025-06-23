@@ -74,6 +74,7 @@ p.addParameter('initialEyeComponentThreshold', 0.9, @isscalar);
 p.addParameter('SOUNDlambda', 10^-1.5, @isscalar);
 p.addParameter('leadFieldPath', '', @(x) ischar(x) || ismatrix(x));  % used by SOUND
 p.addParameter('doDecayRemovalPerTrial', true, @islogical);
+p.addParameter('lineNoiseFreq', 60, @isscalar);  % in Hz
 p.addParameter('lineNoiseNumHarmonics', 1, @isscalar);
 p.addParameter('ICAType', 'fastica', @ischar);
 p.addParameter('stimMuscleComponentThreshold', 8, @isscalar);
@@ -360,14 +361,14 @@ end
 %% notch
 c_say('Notch filtering');
 if false
-	EEG = pop_eegfiltnew(EEG, 58, 62, 2*EEG.srate, 1);
+	EEG = pop_eegfiltnew(EEG, s.lineNoiseFreq-2, s.lineNoiseFreq+2, 2*EEG.srate, 1);
 else
-	EEG = c_EEG_filter_butterworth(EEG, [58 62], 'type', 'bandstop');
+	EEG = c_EEG_filter_butterworth(EEG, s.lineNoiseFreq + [-2, 2], 'type', 'bandstop');
 	if true
 		% also (optionally) filter higher harmonics
 		% even though they will be low-passed later, can still interfere with ICA
 		for iHarmonic = 2:s.lineNoiseNumHarmonics
-			EEG = c_EEG_filter_butterworth(EEG, [-2 2] + 60*iHarmonic, 'type', 'bandstop');
+			EEG = c_EEG_filter_butterworth(EEG, [-2, 2] + s.lineNoiseFreq*iHarmonic, 'type', 'bandstop');
 		end
 	end
 end
