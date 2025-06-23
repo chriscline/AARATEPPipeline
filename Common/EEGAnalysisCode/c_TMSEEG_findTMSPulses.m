@@ -20,7 +20,7 @@ switch(s.filterMethod)
 	case 'median'
 		% subtract median filter to remove drift without drastically changing TMS waveforms
 		c_say('Temporarily subtracting median filtered data');
-		medFiltOrder = 1/s.maxPulseRate*EEG.srate;
+		medFiltOrder = ceil(1/s.maxPulseRate*EEG.srate);
 		medFiltDat = medfilt1(EEG.data,medFiltOrder,[],2,'truncate');
 		EEG.data = EEG.data - medFiltDat;
 		c_sayDone();
