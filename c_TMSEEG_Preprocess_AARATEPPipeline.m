@@ -68,7 +68,7 @@ p.addParameter('baselineTimespan', [-0.5 -0.01], @c_isSpan);
 p.addParameter('filterPrePostExtrapolationDurations', [0 0], @(x) isnumeric(x) && length(x)==2);
 p.addParameter('downsampleTo', 1000, @isscalar);
 p.addParameter('bandpassFreqSpan', [1 200], @c_isSpan);
-p.addParameter('badChannelDetectionMethod', 'TESA_DDWiener_PerTrial', @ischar);
+p.addParameter('badChannelDetectionMethod', {'PREP_deviation', 'TESA_DDWiener_PerTrial'}, @(x) ischar(x) || iscellstr(x));
 p.addParameter('badChannelThreshold', 10, @isscalar);
 p.addParameter('initialEyeComponentThreshold', 0.9, @isscalar);
 p.addParameter('SOUNDlambda', 10^-1.5, @isscalar);

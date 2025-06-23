@@ -8,7 +8,7 @@ function [EEG, misc] = c_TMSEEG_detectBadChannels(varargin)
 
 p = inputParser();
 p.addRequired('EEG', @isstruct);
-p.addParameter('detectionMethod', 'PREP_deviation', @ischar);
+p.addParameter('detectionMethod', 'PREP_deviation', @(x) ischar(x) || iscellstr(x));
 p.addParameter('replaceMethod', 'interpolate', @ischar);
 p.addParameter('artifactTimespan', [], @c_isSpan);
 p.addParameter('threshold', [], @isscalar); % default value for this is method-specific
@@ -17,22 +17,81 @@ p.parse(varargin{:});
 s = p.Results;
 EEG = s.EEG;
 
+if iscellstr(s.detectionMethod)
+	% if multiple methods specified, reject a channel that is identified as bad by any of the listed methods
+
+	if s.doPlot
+		misc.hf = figure;
+		ht = c_GUI_Tiler();
+	end
+
+	badChannelIndices = false(EEG.nbchan, 1);
+	misc.channelScores = nan(EEG.nbchan, length(s.detectionMethod));
+	misc.scoreThresholds = repmat({}, 1, length(s.detectionMethod));
+
+	EEG_tmp = EEG;
+
+	for iDM = 1:length(s.detectionMethod)
+		kwargs = c_cellToStruct(varargin(2:end));
+		kwargs.detectionMethod = s.detectionMethod{iDM};
+		%kwargs.replaceMethod = 'none';
+		kwargs = c_structToCell(kwargs);
+		[EEG_tmp, misc_iDM] = c_TMSEEG_detectBadChannels(EEG_tmp, kwargs{:});
+
+		badChannelIndices(misc_iDM.badChannelIndices) = true;
+		misc.channelScores(:, iDM) = misc_iDM.channelScores;
+		misc.scoreThresholds{iDM} = misc_iDM.scoreThreshold;
+
+		if s.doPlot
+			hp = ht.add();
+			copyobj(misc_iDM.hf.Children(2:end), hp)
+			title(gca, s.detectionMethod{iDM})
+			close(misc_iDM.hf);
+		end
+	end
+
+	badChannels = find(badChannelIndices);
+
+	s.detectionMethod = '__multiple__';
+end
+
 % TODO: also do artifact timespan interpolation for TESA_DDWiener* methods or issue warning if specifying a timespan that is ignored
-if ismember(s.detectionMethod, {'PREP_deviation'})
+if ismember(s.detectionMethod, '__multiple__')
+	% handled within each method, do nothing here
+elseif ismember(s.detectionMethod, {'PREP_deviation', 'TESA_DDWiener_PerTrial_IgnoreArtifactTime', 'TESA_DDWiener_PerTrial_BaselineOnly'})
 	if ismember('artifactTimespan', p.UsingDefaults)
 		warning('Artifact timespan unspecified. Will not ignore artifact timespan for bad channel detection');
 	end
 	if ~isempty(s.artifactTimespan)
-		tmpEEG = c_EEG_ReplaceEpochTimeSegment(EEG,...
-			'timespanToReplace', s.artifactTimespan,...
-			'method', 'zero');
+		if ismember(s.detectionMethod, {'PREP_deviation'})
+			tmpEEG = c_EEG_ReplaceEpochTimeSegment(EEG,...
+				'timespanToReplace', s.artifactTimespan,...
+				'method', 'zero');
+		elseif ismember(s.detectionMethod, {'TESA_DDWiener_IgnoreArtifactTime', 'TESA_DDWiener_PerTrial_IgnoreArtifactTime'})
+			% for backwards compatibility, don't do artifact ignoring for TESA_DDWiener and TESA_DDWiener_PerTrial
+			% methods unless explicitly suffixed with '_IgnoreArtifactTime'
+			tmpEEG = c_EEG_ReplaceEpochTimeSegment(EEG,...
+				'timespanToReplace', s.artifactTimespan,...
+				'method', 'delete');
+		elseif ismember(s.detectionMethod, {'TESA_DDWiener_PerTrial_BaselineOnly'})
+			tmpEEG = pop_select(EEG, 'notime', [s.artifactTimespan(1), EEG.xmax]); 
+		else
+			error('not implemented')
+		end
 	else
 		tmpEEG = EEG;
 	end
+else
+	if ~isempty(s.artifactTimespan)
+		warning('Artifact timespan argument is ignored for method %s', s.detectionMethod)
+	end
+	tmpEEG = EEG;
 end
 
 
 switch(s.detectionMethod)
+	case '__multiple__'
+		% handled above, do nothing here
 	case 'fromASR'
 		% if ASR was previously run on EEG, bad channels are recorded in EEG struct
 		% (requires that chanlocs prior to ASR were saved as EEG.urchanlocs)
@@ -107,13 +166,15 @@ switch(s.detectionMethod)
 		if s.doPlot
 			misc.hf = figure; 
 			topoplot(misc.channelScores, EEG.chanlocs, 'electrodes', 'on',...
-				'emarker2',{misc.badChannelIndices,'x','k',10,2});
+				'emarker2',{badChannels,'x','k',10,2});
 			hc = colorbar; 
-			caxis([-1 1]*rejectionThreshold); 
+			caxis([-1 1]*s.threshold); 
 			ylabel(hc,'Channel deviation');
 		end
 		
-	case {'TESA_DDWiener', 'TESA_DDWiener_PerTrial'}
+	case {'TESA_DDWiener', 'TESA_DDWiener_PerTrial',...
+			'TESA_DDWiener_IgnoreArtifactTime', 'TESA_DDWiener_PerTrial_IgnoreArtifactTime',...
+			'TESA_DDWiener_PerTrial_BaselineOnly'}
 		
 		c_say('Detecting bad channels based on DDWiener noise estimates');
 		
@@ -125,11 +186,11 @@ switch(s.detectionMethod)
 		end
 		
 		switch(s.detectionMethod)
-			case 'TESA_DDWiener'
-				tmp = mean(EEG.data,3);
+			case {'TESA_DDWiener', 'TESA_DDWiener_IgnoreArtifactTime'}
+				tmp = mean(tmpEEG.data,3);
 				[~, sigmas] = DDWiener(tmp);
-			case 'TESA_DDWiener_PerTrial'
-				[~, sigmas] = DDWiener(reshape(EEG.data, [EEG.nbchan, EEG.pnts*EEG.trials]));
+			case {'TESA_DDWiener_PerTrial', 'TESA_DDWiener_PerTrial_IgnoreArtifactTime', 'TESA_DDWiener_PerTrial_BaselineOnly'}
+				[~, sigmas] = DDWiener(reshape(tmpEEG.data, [tmpEEG.nbchan, tmpEEG.pnts*tmpEEG.trials]));
 			otherwise
 				error('Not implemented');
 		end
@@ -157,7 +218,11 @@ switch(s.detectionMethod)
 		end
 		
 	otherwise
-		error('Not implemented');
+		if iscellstr(s.detectionMethod)
+			% processed above, do nothing here
+		else
+			error('Not implemented');
+		end
 end
 
 assert(isempty(badChannels) || isnumeric(badChannels)); % should not be logical indices
