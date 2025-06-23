@@ -211,7 +211,6 @@ doReplaceBadChanImmediately = true;
 
 badChannels = misc.badChannelIndices;
 
-title('Early channel rejection');
 c_FigurePrinter.copyToFile(fullfile(s.outputDir, [s.outputFilePrefix '_QC_EarlyChannelRejection.png']),...
 	'magnification', 2, 'doTransparent', false);
 close(misc.hf);
