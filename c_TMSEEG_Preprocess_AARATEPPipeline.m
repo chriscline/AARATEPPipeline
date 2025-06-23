@@ -92,7 +92,7 @@ s = p.Results;
 EEG = s.EEG;
 
 md = struct();
-md.pipelineVersion = '2.0.2a';
+md.pipelineVersion = '2.0.2';
 
 % check for required named arguments
 assert(~isempty(s.pulseEvent), 'Pulse event must be specified');
