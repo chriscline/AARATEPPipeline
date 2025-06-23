@@ -85,11 +85,12 @@ classdef c_FigurePrinter < handle
 			p.addOptional('doCrop',true,@islogical);
 			p.addOptional('hf',[],@ishandle);
 			p.addParameter('doTransparent',true,@islogical);
+			p.addParameter('ext', '.png', @ischar)
 			p.parse(varargin{:});
 			s = p.Results;
 			
 			c_say('Copying figure to clipboard');
-			filename = [tempname '.png'];
+			filename = [tempname s.ext];
 			c_FigurePrinter.copyToFile(filename,...
 				'magnification',s.magnification,...
 				'doCrop',s.doCrop,...
@@ -148,6 +149,10 @@ classdef c_FigurePrinter < handle
 				if ~isempty(hBackgrounds)
 					tbackposs = get(hBackgrounds,'Position');
 					tbackcols = get(hBackgrounds,'BackgroundColor');
+					if length(hBackgrounds)==1
+						tbackposs = {tbackposs};
+						tbackcols = {tbackcols};
+					end
 					set(hBackgrounds,'BackgroundColor',[1 1 1]);	
 					for iH = 1:length(hBackgrounds)
 						hBackgrounds(iH).Position = tbackposs{iH};
