@@ -11,6 +11,10 @@ p.addParameter('artifactTimespan', [], @c_isSpan); % this can be wider than typi
 												   %  (only used for interpolating a temporary signal for filtering, not the output)
 p.addParameter('doPiecewise', true, @islogical);
 p.addParameter('piecewiseTimeToExtend', 0.5, @isscalar);
+p.addParameter('prePostExtrapolationDurations', [0 0], @(x) isvector(x) && all(x >= 0) && length(x)==2);
+													% regardless of center artifact timespan, you may want to extrapolate the signal on
+													% either end of available data to reduce filter edge effects.
+													% Specify positive prePostExtrapolationDurations values to do so.
 p.addParameter('interpolationArgs', {}, @iscell); % optional, non-default interpolation args
 p.addParameter('doDebug', false, @islogical);
 p.parse(varargin{:});
@@ -44,8 +48,8 @@ if s.doPiecewise
 		prePostFitDurations = interpArgs.prePostFitDurations;
 	end
 	
-	assert(EEG.xmin < s.artifactTimespan(2) - s.piecewiseTimeToExtend);
-	assert(EEG.xmax > s.artifactTimespan(1) + s.piecewiseTimeToExtend);
+	assert(EEG.xmin - s.prePostExtrapolationDurations(1) <= s.artifactTimespan(2) - s.piecewiseTimeToExtend);
+	assert(EEG.xmax + s.prePostExtrapolationDurations(2) >= s.artifactTimespan(1) + s.piecewiseTimeToExtend);
 	
 	interpArgs = c_structToCell(interpArgs);
 	EEG_pre = c_EEG_ReplaceEpochTimeSegment(EEG,...
@@ -53,10 +57,38 @@ if s.doPiecewise
 		interpArgs{:},...
 		'prePostFitDurations', [prePostFitDurations(1) 0]);
 	
+	if s.prePostExtrapolationDurations(1) > 0
+		EEG_pre = c_EEG_ReplaceEpochTimeSegment(EEG_pre,...
+			'timespanToReplace', [EEG.xmin - s.prePostExtrapolationDurations(1), EEG.xmin],...
+			interpArgs{:},...
+			'prePostFitDurations', [0, s.artifactTimespan(1) - EEG.xmin]);
+		if s.prePostExtrapolationDurations(2) > 0
+			EEG_pre = c_EEG_grow(EEG_pre,...
+				'timespan', [EEG_pre.xmin, EEG_pre.xmax + s.prePostExtrapolationDurations(2)],...
+				'padWith', NaN);
+		end
+	end
+
 	EEG_post = c_EEG_ReplaceEpochTimeSegment(EEG,...
 		'timespanToReplace', [s.artifactTimespan(2) - s.piecewiseTimeToExtend, s.artifactTimespan(2)],...
 		interpArgs{:},...
 		'prePostFitDurations', [0 prePostFitDurations(2)]);
+
+	if s.prePostExtrapolationDurations(2) > 0
+		EEG_post = c_EEG_ReplaceEpochTimeSegment(EEG_post,...
+			'timespanToReplace', [EEG.xmax, EEG.xmax + s.prePostExtrapolationDurations(2)],...
+			interpArgs{:},...
+			'prePostFitDurations', [EEG.xmax - s.artifactTimespan(2), 0]);
+		if s.prePostExtrapolationDurations(1) > 0
+			EEG_post = c_EEG_grow(EEG_post,...
+				'timespan', [EEG_post.xmin - s.prePostExtrapolationDurations(1), EEG_post.xmax],...
+				'padWith', NaN);
+		end
+	end
+
+	if any(s.prePostExtrapolationDurations > 0)
+		EEG = c_EEG_grow(EEG, 'timespan', [EEG.xmin EEG.xmax] + [-1 1] .* s.prePostExtrapolationDurations, 'padWith', NaN);
+	end
 
 	% blend pre-filter results
 	preIndices = EEG.times < s.artifactTimespan(1) * 1e3;
@@ -93,7 +125,11 @@ if s.doPiecewise
 					0 0.6 0;
 					0 0.4 0];
 		
-		plotIndices = EEG.times >= (s.artifactTimespan(2) - s.piecewiseTimeToExtend*0.5)*1e3 & EEG.times <= (s.artifactTimespan(1) + s.piecewiseTimeToExtend*0.5)*1e3;
+		if false
+			plotIndices = EEG.times >= (s.artifactTimespan(2) - s.piecewiseTimeToExtend*0.5)*1e3 & EEG.times <= (s.artifactTimespan(1) + s.piecewiseTimeToExtend*0.5)*1e3;
+		else
+			plotIndices = true(size(EEG.times));
+		end
 		assert(sum(plotIndices)>1);
 		
 		% plot original
@@ -113,6 +149,11 @@ if s.doPiecewise
 		extrapIndices = plotIndices & EEG.times >= s.artifactTimespan(1)*1e3 & EEG.times <= (s.artifactTimespan(1) + s.piecewiseTimeToExtend)*1e3;
 		hp = plot(EEG.times(extrapIndices), EEG_pre.data(iCh, extrapIndices, iTr));
 		hp.Color = [colors(2,:), 0.5];
+		if s.prePostExtrapolationDurations(1) > 0
+			extrapIndices = EEG.times < s.EEG.xmin*1e3 & EEG.times > (s.EEG.xmin - s.prePostExtrapolationDurations(1))*1e3;
+			hp = plot(EEG.times(extrapIndices), EEG_pre.data(iCh, extrapIndices, iTr));
+			hp.Color = [colors(2,:)*0.5, 0.5];
+		end
 		ylabel('pre-stim extrap');
 		
 		% leave a place for pre-stim extrap filtered
@@ -128,6 +169,11 @@ if s.doPiecewise
 		extrapIndices = plotIndices & EEG.times <= s.artifactTimespan(2)*1e3 & EEG.times >= (s.artifactTimespan(2) - s.piecewiseTimeToExtend)*1e3;
 		hp = plot(EEG.times(extrapIndices), EEG_post.data(iCh, extrapIndices, iTr));
 		hp.Color = [colors(3,:), 0.5];
+		if s.prePostExtrapolationDurations(2) > 0
+			extrapIndices = EEG.times > s.EEG.xmax*1e3 & EEG.times < (s.EEG.xmax + s.prePostExtrapolationDurations(2))*1e3;
+			hp = plot(EEG.times(extrapIndices), EEG_post.data(iCh, extrapIndices, iTr));
+			hp.Color = [colors(3,:)*0.5, 0.5];
+		end
 		ylabel('post-stim extrap');
 		
 		% leave a place for post-stim extrap filtered
@@ -149,8 +195,20 @@ if s.doPiecewise
 	end
 	
 	% apply filter
-	EEG_pre = applyFilter(EEG_pre, s);
-	EEG_post = applyFilter(EEG_post, s);
+	if any(s.prePostExtrapolationDurations > 0)
+		% extra wrappers to remove NaN times before filtering, and replace them after
+		% not very efficient...
+		EEG_pre = pop_select(EEG_pre, 'time', [EEG_pre.xmin, s.EEG.xmax]);
+		EEG_pre = applyFilter(EEG_pre, s);
+		EEG_pre = c_EEG_grow(EEG_pre, 'timespan', [EEG_post.xmin, EEG_post.xmax], 'padWith', NaN);
+
+		EEG_post = pop_select(EEG_post, 'time', [s.EEG.xmin, EEG_post.xmax]);
+		EEG_post = applyFilter(EEG_post, s);
+		EEG_post = c_EEG_grow(EEG_post, 'timespan', [EEG_pre.xmin, EEG_pre.xmax], 'padWith', NaN);
+	else
+		EEG_pre = applyFilter(EEG_pre, s);
+		EEG_post = applyFilter(EEG_post, s);
+	end
 	
 	if s.doDebug
 		% plot pre-stim filtered
@@ -235,9 +293,18 @@ if s.doPiecewise
 		
 		hf.Position = [2 50 440 1300];
 	end
+
+	if any(s.prePostExtrapolationDurations > 0)
+		% cut data back down to original timespan
+		EEG = pop_select(EEG, 'time', [s.EEG.xmin, s.EEG.xmax]);
+	end
 	
 	
 else
+
+	if any(s.prePostExtrapolationDurations > 0)
+		error('Not implemented');
+	end
 	
 	if s.doDebug
 		
@@ -276,7 +343,11 @@ else
 	tmpEEG2 = applyFilter(tmpEEG, s);
 	
 	if s.doDebug
-		plotIndices = EEG.times >= (s.artifactTimespan(2) - 0.25)*1e3 & EEG.times <= (s.artifactTimespan(1) + 0.25)*1e3;
+		if false
+			plotIndices = EEG.times >= (s.artifactTimespan(2) - 0.25)*1e3 & EEG.times <= (s.artifactTimespan(1) + 0.25)*1e3;
+		else
+			plotIndices = true(size(EEG.times));
+		end
 		assert(sum(plotIndices)>1);
 		
 		% plot original
@@ -357,7 +428,9 @@ function EEG = applyFilter(EEG, s)
 		case 'eegfiltnew'
 			EEG = pop_eegfiltnew(EEG, s.lowCutoff, s.highCutoff);
 		case 'butterworth'
-			EEG = c_EEG_filter_butterworth(EEG, [s.lowCutoff, c_if(isempty(s.highCutoff), 0, s.highCutoff)]);
+			EEG = c_EEG_filter_butterworth(EEG, [ ...
+				c_if(isempty(s.lowCutoff), 0, s.lowCutoff), ...
+				c_if(isempty(s.highCutoff), 0, s.highCutoff)]);
 		otherwise
 			error('Not implemented');
 	end

@@ -65,6 +65,7 @@ p.addParameter('outputFilePrefix', 'PreprocessedResults', @ischar);
 p.addParameter('epochTimespan', [], @c_isSpan);
 p.addParameter('artifactTimespan', [-0.002, 0.012], @c_isSpan);
 p.addParameter('baselineTimespan', [-0.5 -0.01], @c_isSpan);
+p.addParameter('filterPrePostExtrapolationDurations', [0 0], @(x) isnumeric(x) && length(x)==2);
 p.addParameter('downsampleTo', 1000, @isscalar);
 p.addParameter('bandpassFreqSpan', [1 200], @c_isSpan);
 p.addParameter('badChannelDetectionMethod', 'TESA_DDWiener_PerTrial', @ischar);
@@ -88,7 +89,7 @@ s = p.Results;
 EEG = s.EEG;
 
 md = struct();
-md.pipelineVersion = '2.0.1';
+md.pipelineVersion = '2.0.2a';
 
 % check for required named arguments
 assert(~isempty(s.pulseEvent), 'Pulse event must be specified');
@@ -187,7 +188,8 @@ timeToExtend = min(timeToExtend, maxTimeToExtend);
 EEG = c_TMSEEG_applyModifiedBandpassFilter(EEG,...
 	'piecewiseTimeToExtend', timeToExtend,...
 	'lowCutoff', s.bandpassFreqSpan(1),...
-	'artifactTimespan', s.artifactTimespan*3);
+	'artifactTimespan', s.artifactTimespan*3,...
+	'prePostExtrapolationDurations', s.filterPrePostExtrapolationDurations);
 c_sayDone();
 if s.doDebug
 	intermediateEEGs{end+1} = EEG;
