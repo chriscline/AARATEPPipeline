@@ -26,6 +26,8 @@ function EEG = c_EEG_ReplaceEpochTimeSegment(EEG,varargin)
 				ep = EEG.epoch(iE);
 				epEvtIndices = find(ismember(ep.eventtype,{s.eventType}));
 				for iEvt = epEvtIndices
+					assert(EEG.times(1) <= s.timespanToReplace(1)*1e3 + ep.eventlatency{iEvt}, 'Extrapolating beyond start of data not implemented')
+					assert(EEG.times(end) >= s.timespanToReplace(2)*1e3 + ep.eventlatency{iEvt}, 'Extrapolating beyond end of data not implemented')
 					indicesToReplace(:,:,iE) = indicesToReplace(:,:,iE) |...
 						(EEG.times >= s.timespanToReplace(1)*1e3 + ep.eventlatency{iEvt} & ...
 						 EEG.times <= s.timespanToReplace(2)*1e3 + ep.eventlatency{iEvt});
@@ -35,6 +37,22 @@ function EEG = c_EEG_ReplaceEpochTimeSegment(EEG,varargin)
 			keyboard
 		else
 			% epoch around time 0 in epoch
+			if s.timespanToReplace(1)*1e3 < EEG.times(1) || s.timespanToReplace(2)*1e3 > EEG.times(end)
+				% expand data to prepare for extrapolating extra values before beginning or after end of existing data
+
+				newTSpan = [min(s.timespanToReplace(1), EEG.xmin), max(s.timespanToReplace(2), EEG.xmax)];
+					
+				if newTSpan(1) < EEG.xmin
+					assert(s.prePostFitDurations(1) == 0, 'No data available to fit before timespan')
+				end
+
+				if newTSpan(2) > EEG.xmax
+					assert(s.prePostFitDurations(2) == 0, 'No data available to fit after timespan')
+				end
+
+				EEG = c_EEG_grow(EEG, 'padWith', NaN, 'timespan', newTSpan);
+			end
+
 			indicesToReplace = EEG.times >= s.timespanToReplace(1)*1e3 & EEG.times <= s.timespanToReplace(2)*1e3;
 		end
 		
@@ -118,7 +136,13 @@ function data = interpolateWithinIndices(data,indices, varargin)
 	switch(s.method)
 		case 'ARExtrapolation'
 			replaceStarts = find(diff(indices)>0)+1;
+			if indices(1)
+				replaceStarts = [1 replaceStarts];
+			end
 			replaceEnds = find(diff(indices)<0);
+			if indices(end)
+				replaceEnds = [replaceEnds, length(indices)];
+			end
 			assert(length(replaceStarts)==length(replaceEnds));
 			
 			s.prePostFitDurations = round(s.prePostFitDurations);
@@ -138,14 +162,13 @@ function data = interpolateWithinIndices(data,indices, varargin)
 				if iR < length(replaceStarts)
 					nextStart = replaceStarts(iR+1);
 				else
-					nextStart = size(data, 2);
+					nextStart = size(data, 2)+1;
 				end
 				if fitEnd >= nextStart
 					warning('Reduced data available for fitting after timespanToReplace');
 					fitEnd = nextStart - 1;
-					assert(nextStart - fitEnd > 1);
+					assert(fitEnd - replaceEnds(iR) > 1);
 				end
-				
 				
 				if s.doDebug
 % 				toFit = data(:, fitStart:fitEnd);
