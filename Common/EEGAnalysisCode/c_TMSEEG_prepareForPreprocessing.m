@@ -47,6 +47,18 @@ if ~isempty(s.inputFilePaths)
 		switch(inputFileExt)
 			case '.vhdr'
 				EEGs{iI} = c_loadEEG_BrainProducts(s.inputFilePaths{iI});
+			case '.mat'
+				tmp = load(s.inputFilePaths{iI});
+				if isfield(tmp, 'EEG')
+					% mat file had an EEG struct, ignore anything else
+					EEGs{iI} = tmp.EEG;
+				elseif isfield(tmp, 'data')
+					% if has a data field, assume mat file was a directly saved EEG struct
+						EEGs{iI} = tmp;
+				else
+					error('EEG struct not found in loaded .mat file')
+				end
+
 			otherwise
 				error('Unsupported input type: %s', ext);
 		end
