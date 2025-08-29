@@ -59,7 +59,7 @@ defaultTPOIs = [25 33 43 55 90 135 250]*1e-3;
 
 p = inputParser();
 p.addRequired('EEG', @isstruct);
-p.addParameter('pulseEvent', '', @ischar);
+p.addParameter('pulseEvents', '', @(x) ischar(x) || iscellstr(x));
 p.addParameter('outputDir', '', @ischar);
 p.addParameter('outputFilePrefix', 'PreprocessedResults', @ischar);
 p.addParameter('epochTimespan', [], @c_isSpan);
@@ -95,7 +95,7 @@ md = struct();
 md.pipelineVersion = '2.1.0';
 
 % check for required named arguments
-assert(~isempty(s.pulseEvent), 'Pulse event must be specified');
+assert(~isempty(s.pulseEvents), 'Pulse event(s) must be specified');
 assert(~isempty(s.outputDir),'Output directory must be specified');
 assert(~isempty(s.epochTimespan), 'Epoch timespan must be specified');
 
@@ -104,10 +104,13 @@ if s.doDebug
     intermediateLabels = {};
 end
 
+if ischar(s.pulseEvents)
+	s.pulseEvents = {s.pulseEvents};
+end
 
 %% make sure no pulses are unexpectedly close together
 EEG = c_TMSEEG_handleBurstEvents(EEG,...
-	'pulseEvent', s.pulseEvent,...
+	'pulseEvents', s.pulseEvents,...
 	'method', 'error',...
 	'burstMaxIPI', max(abs(s.epochTimespan)));
 
@@ -133,7 +136,7 @@ end
 
 %% epoch
 c_say('Epoching');
-fn = @() pop_epoch(EEG, {s.pulseEvent},s.epochTimespan);
+fn = @() pop_epoch(EEG, s.pulseEvents,s.epochTimespan);
 if true
 	[~,EEG] = evalc('fn()');
 else
