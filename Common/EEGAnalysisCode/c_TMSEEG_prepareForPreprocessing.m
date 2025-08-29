@@ -19,6 +19,7 @@ p.addParameter('inputEEGs',[],@(x) isstruct(x) || iscell(x));
 p.addParameter('inputDatasetLabels', 'auto', @(x) ischar(x) || iscellstr(x));
 p.addParameter('pulseEvent', 'auto', @ischar);
 p.addParameter('pulseEvents', {}, @iscellstr);  % can specify multiple pulse event types to be treated as the same
+p.addParameter('ifPulseTooCloseToBoundary', 'ignore', @ischar);
 p.addParameter('epochTimespan', [], @c_isSpan);
 p.parse(varargin{:});
 s = p.Results;
@@ -102,7 +103,14 @@ else
 end
 
 
-%%
+%% infer reasonable epoch timespan if not specified
+if isempty(s.epochTimespan)
+	keyboard %TODO
+	
+end
+misc.epochTimespan = s.epochTimespan; 
+
+%% trim and concatenate
 
 if ~isempty(s.inputDatasetLabels)
 	% before concatenation, label individual epochs with their parent dataset so that 
@@ -114,25 +122,55 @@ if ~isempty(s.inputDatasetLabels)
 	end
 end
 
-if length(EEGs) > 1
-	% before concatenation, trim any large excess of non-pulse data at beginning and end of each file
-	c_say('Trimming continuous data');
-	extraTime = s.epochTimespan*2; % time in seconds before first and after last pulse to keep
-	for iD = 1:length(EEGs)
-		EEG = EEGs{iD};
-		firstEventIndex = find(ismember({EEG.event.type}, pulseEvents),1,'first');
-		startTime = EEG.event(firstEventIndex).latency/EEG.srate + extraTime(1);
-		lastEventIndex = find(ismember({EEG.event.type},pulseEvents),1,'last');
-		endTime = EEG.event(lastEventIndex).latency/EEG.srate + extraTime(2);
-		if startTime > 0 || (EEG.pnts-1)/EEG.srate - endTime > 0
-			c_saySingle('Cutting %.2f s at beginning and %.2f s at end', startTime, (EEG.pnts-1)/EEG.srate - endTime);
-			EEGs{iD} = pop_select(EEG,'time',[startTime, endTime]);
-		else
-			c_saySingle('Trim not needed');
-		end
+% trim any large excess of non-pulse data at beginning and end of each file
+c_say('Trimming continuous data');
+extraTime = s.epochTimespan*2; % time in seconds before first and after last pulse to keep
+for iD = 1:length(EEGs)
+	EEG = EEGs{iD};
+
+	switch(s.ifPulseTooCloseToBoundary)
+		case 'ignore'
+			% do nothing
+		case 'error'
+			keyboard  % TODO
+		case 'drop'
+			for iD = 1:length(EEGs)
+				EEG = EEGs{iD};
+				pulseIndices = find(ismember({EEG.event.type}, pulseEvents));
+				pulseTimes = [EEG.event(pulseIndices).latency] / EEG.srate;
+				boundaryTimes = [EEG.event(ismember({EEG.event.type}, {'boundary'})).latency] / EEG.srate;
+				boundaryTimes = [EEG.times(1)/1e3, boundaryTimes, EEG.times(end)/1e3];
+				timesFromBoundaryToPulse = pulseTimes - boundaryTimes';
+				timesFromPulseToBoundary = -timesFromBoundaryToPulse;
+				timesFromBoundaryToPulse(timesFromBoundaryToPulse < 0) = NaN;
+				timesFromPulseToBoundary(timesFromPulseToBoundary < 0) = NaN;
+				toRemove = any(timesFromBoundaryToPulse < -s.epochTimespan(1), 1) | ...
+					any(timesFromPulseToBoundary < s.epochTimespan(2), 1);
+				if any(toRemove)
+					c_saySingle('Removing %d pulse events too close to data boundary', sum(toRemove))
+					EEG.event(pulseIndices(toRemove)) = [];
+					EEGs{iD} = EEG;
+				end
+			end
+		otherwise
+			error('Not implemented')
 	end
-	c_sayDone();
-	
+
+
+	firstEventIndex = find(ismember({EEG.event.type}, pulseEvents),1,'first');
+	startTime = EEG.event(firstEventIndex).latency/EEG.srate + extraTime(1);
+	lastEventIndex = find(ismember({EEG.event.type},pulseEvents),1,'last');
+	endTime = EEG.event(lastEventIndex).latency/EEG.srate + extraTime(2);
+	if startTime > 0 || (EEG.pnts-1)/EEG.srate - endTime > 0
+		c_saySingle('Cutting %.2f s at beginning and %.2f s at end', startTime, (EEG.pnts-1)/EEG.srate - endTime);
+		EEGs{iD} = pop_select(EEG,'time',[startTime, endTime]);
+	else
+		c_saySingle('Trim not needed');
+	end
+end
+c_sayDone();
+
+if length(EEGs) > 1
 	c_say('Concatenating EEG data');
 	EEG = pop_mergeset(cell2mat(EEGs), 1:length(EEGs), 0);
 	c_sayDone();
@@ -141,12 +179,7 @@ else
 end
 clearvars EEGs
 
-%% infer reasonable epoch timespan if not specified
-if isempty(s.epochTimespan)
-	keyboard %TODO
-	
-end
-misc.epochTimespan = s.epochTimespan; 
+
 
 %% make sure chanlocs are set (interpolation and plotting in ARTIST needs channel locations)
 if length([EEG.chanlocs.X]) < EEG.nbchan ....
