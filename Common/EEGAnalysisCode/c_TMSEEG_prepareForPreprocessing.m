@@ -79,7 +79,7 @@ end
 	
 %% infer pulse event type if requested
 if ~isempty(s.pulseEvents)
-	assert(ismember(p.UsingDefaults, 'pulseEvent'), 'Should not specify both pulseEvent and pulseEvents');
+	assert(ismember('pulseEvent', p.UsingDefaults), 'Should not specify both pulseEvent and pulseEvents');
 	c_saySingle('Specified pulse event types: %s', c_toString(s.pulseEvents));
 	misc.pulseEvents = s.pulseEvents;
 	pulseEvents = s.pulseEvents;
