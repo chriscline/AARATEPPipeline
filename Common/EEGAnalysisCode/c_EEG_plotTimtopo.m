@@ -174,9 +174,11 @@ if doPlotTopos
 				error('No samples found near TPOI %s ms',c_toString(s.TPOI(iT)*1e3));
 			end
 		end
-		s.TPOIData = nan(EEG.nbchan,numTimes,numTrials);
-		for iTr = 1:numTrials
-			s.TPOIData(:,:,iTr) = EEG.data(:,timeIndices(iTr,:),iTr);
+		if s.doPlotSensorSpace
+			s.TPOIData = nan(EEG.nbchan,numTimes,numTrials);
+			for iTr = 1:numTrials
+				s.TPOIData(:,:,iTr) = EEG.data(:,timeIndices(iTr,:),iTr);
+			end
 		end
 		if isempty(s.srcTPOIData) && s.doPlotSourceSpace && ~isempty(s.srcData)
 			s.srcTPOIData = nan(size(s.srcData, 1), numTimes, numTrials);
@@ -581,7 +583,6 @@ if s.doPlotSourceSpace && doPlotTopos
 		ssht = c_GUI_Tiler('parent',sht.add());
 		ssht.numRows = s.numMapRows;
 		ssht.pauseAutoRetiling();
-		ssht.numRows = s.numMapRows;
 		
 		timeOrder = 1:numTimes;
 		if s.numMapRows == 2
